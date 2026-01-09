@@ -181,3 +181,31 @@ order by
 ```
 
 <DataTable data={open_no_comments} />
+
+## Closed without a reply
+
+```sql closed_no_reply
+select
+    number,
+    ANY_VALUE(discussions.author),
+    ANY_VALUE(category_name),
+    ANY_VALUE(title),
+    ANY_VALUE(url),
+    ANY_VALUE(discussions.created_at),
+    ANY_VALUE(discussions.updated_at)
+    -- TODO: closed_by
+from
+    discussions
+    left join discussion_comments on discussion_comments.discussion_number = discussions.number
+where
+    (
+        state != 'OPEN'
+        and state != 'REOPENED'
+    )
+    and discussion_comments.discussion_number is null
+group by
+    discussions.number,
+    discussions.created_at
+order by
+    discussions.created_at asc
+```
