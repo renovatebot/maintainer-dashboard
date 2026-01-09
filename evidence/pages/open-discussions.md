@@ -2,6 +2,140 @@
 title: Open Discussions
 ---
 
+## Open Discussions, by age
+
+```sql open_age
+select
+    category_name,
+    month,
+    count(1) as num
+from
+    (
+        select
+            category_name,
+            date_trunc('month', discussions.created_at) as month,
+            count(1)
+        from
+            discussions
+        where
+            (
+                state = 'OPEN'
+                or state = 'REOPENED'
+            )
+            and category_name = 'Request Help'
+        group by
+            category_name,
+            discussions.created_at
+        order by
+            discussions.created_at asc
+    )
+group by
+    category_name,
+    month
+union
+select
+    category_name,
+    month,
+    count(1) as num
+from
+    (
+        select
+            category_name,
+            date_trunc('month', discussions.created_at) as month,
+            count(1)
+        from
+            discussions
+        where
+            (
+                state = 'OPEN'
+                or state = 'REOPENED'
+            )
+            and category_name = 'Suggest an Idea'
+        group by
+            category_name,
+            discussions.created_at
+        order by
+            discussions.created_at asc
+    )
+group by
+    category_name,
+    month
+```
+
+<BarChart
+data={open_age}
+series=category_name
+x=month
+y=num
+title="Open Discussions, by creation date"
+/>
+
+```sql closed_age
+select
+    category_name,
+    month,
+    count(1) as num
+from
+    (
+        select
+            category_name,
+            date_trunc('month', discussions.created_at) as month,
+            count(1)
+        from
+            discussions
+        where
+            (
+                state != 'OPEN'
+                and state != 'REOPENED'
+            )
+            and category_name = 'Request Help'
+        group by
+            category_name,
+            discussions.created_at
+        order by
+            discussions.created_at asc
+    )
+group by
+    category_name,
+    month
+union
+select
+    category_name,
+    month,
+    count(1) as num
+from
+    (
+        select
+            category_name,
+            date_trunc('month', discussions.created_at) as month,
+            count(1)
+        from
+            discussions
+        where
+            (
+                state != 'OPEN'
+                and state != 'REOPENED'
+            )
+            and category_name = 'Suggest an Idea'
+        group by
+            category_name,
+            discussions.created_at
+        order by
+            discussions.created_at asc
+    )
+group by
+    category_name,
+    month
+```
+
+<BarChart
+data={closed_age}
+series=category_name
+x=month
+y=num
+title="Closed Discussions, by creation date"
+/>
+
 ## Open Discussions, with no comments
 
 ```sql categories
@@ -33,7 +167,10 @@ from
     discussions
     left join discussion_comments on discussion_comments.discussion_number = discussions.number
 where
-    state = 'OPEN'
+    (
+        state = 'OPEN'
+        or state = 'REOPENED'
+    )
     and discussion_comments.discussion_number is null
     and category_name = '${inputs.category_name.value}'
 group by
