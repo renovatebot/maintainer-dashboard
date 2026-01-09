@@ -22,7 +22,9 @@ create table if not exists discussions (
     author text not null,
     category_name text not null,
     answer_chosen_at text,
-    answered_by text
+    answered_by text,
+    -- a JSON array of label names
+    labels json
 );
 
 create table if not exists discussion_comments (

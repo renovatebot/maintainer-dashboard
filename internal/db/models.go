@@ -6,6 +6,7 @@ package db
 
 import (
 	"database/sql"
+	"encoding/json"
 )
 
 type Category struct {
@@ -28,6 +29,7 @@ type Discussion struct {
 	CategoryName   string
 	AnswerChosenAt sql.NullString
 	AnsweredBy     sql.NullString
+	Labels         json.RawMessage
 }
 
 type DiscussionComment struct {
