@@ -14,11 +14,11 @@ import (
 func main() {
 	logger := slog.Default()
 
-	path := flag.String("path", "dashboard.sqlite", "Path to the SQLite database file")
+	path := flag.String("db", "dashboard.sqlite", "Path to the SQLite database file")
 	flag.Parse()
 
 	if path == nil {
-		logger.Error("Missing -path parameter")
+		logger.Error("Missing -db parameter")
 		os.Exit(1)
 	}
 
