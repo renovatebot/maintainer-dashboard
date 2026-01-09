@@ -1,0 +1,5 @@
+# This file was automatically generated
+name: renovate
+type: sqlite
+options:
+  filename: dashboard.sqlite
