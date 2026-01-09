@@ -238,3 +238,84 @@ where
 order by
     discussions.created_at asc
 ```
+
+## Bumped after some time
+
+```sql bumped_after_many_days_open
+-- Co-authored-by: gpt-4.1 (GitHub Copilot)
+with ranked_comments as (
+    select
+        discussions.number,
+        discussions.title,
+        discussions.url,
+        discussions.created_at,
+        discussion_comments.updated_at,
+        discussion_comments.author,
+        ROW_NUMBER() OVER (
+            partition BY discussions.number
+            order by
+                discussion_comments.updated_at desc
+        ) as rn
+    from
+        discussions
+        inner join discussion_comments on discussion_comments.discussion_number = discussions.number
+    where
+        state in ('OPEN', 'REOPENED')
+)
+select
+    updated_at,
+    author as "Last commenter",
+    title,
+    url,
+    date_diff('day', created_at, updated_at) as "Days after creation",
+from
+    ranked_comments
+where
+    rn = 1
+order by
+    "Days after creation" desc,
+    updated_at desc
+limit
+    50
+```
+
+```sql bumped_after_many_days_closed
+-- Co-authored-by: gpt-4.1 (GitHub Copilot)
+with ranked_comments as (
+    select
+        discussions.number,
+        discussions.title,
+        discussions.url,
+        discussions.created_at,
+        discussion_comments.updated_at,
+        discussion_comments.author,
+        ROW_NUMBER() OVER (
+            partition BY discussions.number
+            order by
+                discussion_comments.updated_at desc
+        ) as rn
+    from
+        discussions
+        inner join discussion_comments on discussion_comments.discussion_number = discussions.number
+    where
+        state not in ('OPEN', 'REOPENED')
+)
+select
+    updated_at,
+    author as "Last commenter",
+    title,
+    url,
+    date_diff('day', created_at, updated_at) as "Days after creation",
+from
+    ranked_comments
+where
+    rn = 1
+order by
+    "Days after creation" desc,
+    updated_at desc
+limit
+    50
+```
+
+<DataTable data={bumped_after_many_days_open} title="Open Discussions, bumped after some time" />
+<DataTable data={bumped_after_many_days_closed} title="Closed Discussions, bumped after some time" />
