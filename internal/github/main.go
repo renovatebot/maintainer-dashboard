@@ -188,7 +188,10 @@ func RetrieveDiscussionAndComments(ctx context.Context, client *github.Client, g
 	}
 
 	if discussionQuery.Repository.Discussion.ClosedAt != nil {
-		discussion.ClosedAt = discussionQuery.Repository.Discussion.ClosedAt.Format(time.RFC3339)
+		discussion.ClosedAt = sql.NullString{
+			String: discussionQuery.Repository.Discussion.ClosedAt.Format(time.RFC3339),
+			Valid:  true,
+		}
 	}
 
 	if discussionQuery.Repository.Discussion.AnswerChosenAt != nil {

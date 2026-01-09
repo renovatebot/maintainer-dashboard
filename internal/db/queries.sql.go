@@ -81,7 +81,7 @@ type InsertDiscussionParams struct {
 	State          string
 	CreatedAt      string
 	UpdatedAt      string
-	ClosedAt       string
+	ClosedAt       sql.NullString
 	Author         string
 	CategoryName   string
 	AnswerChosenAt sql.NullString

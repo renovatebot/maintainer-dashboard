@@ -18,7 +18,7 @@ create table if not exists discussions (
     -- Discussion.updatedAt
     -- indicates the **??**, including comments, but doesn't include a comment being edited
     updated_at text not null,
-    closed_at text not null,
+    closed_at text,
     author text not null,
     category_name text not null,
     answer_chosen_at text,
