@@ -209,3 +209,32 @@ group by
 order by
     discussions.created_at asc
 ```
+
+## Closed unanswered
+
+```sql closed_unanswered
+select
+    number,
+    (discussions.author),
+    (category_name),
+    (title),
+    (url),
+    (discussions.created_at),
+    (discussions.updated_at),
+    answer_chosen_at
+    -- TODO: closed_by
+from
+    discussions
+where
+    (
+        answer_chosen_at is null
+        or answer_chosen_at = '1970-01-01'
+    )
+    and category_name = 'Request Help'
+    and (
+        state != 'OPEN'
+        and state != 'REOPENED'
+    )
+order by
+    discussions.created_at asc
+```
