@@ -28,6 +28,7 @@ create table if not exists discussions (
 );
 
 create table if not exists discussion_comments (
+    -- TODO foreign key
     discussion_number integer not null,
     id text primary key,
     created_at text not null,
