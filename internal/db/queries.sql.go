@@ -106,3 +106,38 @@ func (q *Queries) InsertDiscussion(ctx context.Context, arg InsertDiscussionPara
 	)
 	return err
 }
+
+const insertDiscussionComment = `-- name: InsertDiscussionComment :exec
+insert into
+    discussion_comments (
+        discussion_number,
+        id,
+        created_at,
+        updated_at,
+        author,
+        reply_to
+    )
+values
+    (?, ?, ?, ?, ?, ?)
+`
+
+type InsertDiscussionCommentParams struct {
+	DiscussionNumber int64
+	ID               string
+	CreatedAt        string
+	UpdatedAt        string
+	Author           string
+	ReplyTo          sql.NullString
+}
+
+func (q *Queries) InsertDiscussionComment(ctx context.Context, arg InsertDiscussionCommentParams) error {
+	_, err := q.db.ExecContext(ctx, insertDiscussionComment,
+		arg.DiscussionNumber,
+		arg.ID,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+		arg.Author,
+		arg.ReplyTo,
+	)
+	return err
+}

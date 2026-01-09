@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -122,7 +123,7 @@ func ListDiscussionNumbers(ctx context.Context, client *github.Client, gqlClient
 	}
 }
 
-func RetrieveDiscussionAndComments(ctx context.Context, client *github.Client, gqlClient *githubv4.Client, org, repo string, number int64) (db.InsertDiscussionParams, []db.DiscussionComment, error) {
+func RetrieveDiscussionAndComments(ctx context.Context, client *github.Client, gqlClient *githubv4.Client, org, repo string, number int64) (db.InsertDiscussionParams, []db.InsertDiscussionCommentParams, error) {
 	var discussionQuery struct {
 		Repository struct {
 			Discussion struct {
@@ -177,14 +178,8 @@ func RetrieveDiscussionAndComments(ctx context.Context, client *github.Client, g
 		// ClosedAt is handled below
 		Author:       string(discussionQuery.Repository.Discussion.Author.Login),
 		CategoryName: string(discussionQuery.Repository.Discussion.Category.Name),
-		// AnswerChosenAt: sql.NullString{
-		// 	String: "",
-		// 	Valid:  false,
-		// },
-		// AnsweredBy: sql.NullString{
-		// 	String: "",
-		// 	Valid:  false,
-		// },
+		// AnswerChosenAt is handled below
+		// AnswerBy is handled below
 		Labels: []byte("[]"),
 	}
 
@@ -222,5 +217,94 @@ func RetrieveDiscussionAndComments(ctx context.Context, client *github.Client, g
 		}
 	}
 
-	return discussion, nil, nil
+	var discussionCommentsQuery struct {
+		Repository struct {
+			Discussion struct {
+				Comments struct {
+					PageInfo struct {
+						HasNextPage githubv4.Boolean
+						EndCursor   githubv4.String
+					}
+					Nodes []struct {
+						ID        string
+						CreatedAt githubv4.DateTime
+						UpdatedAt githubv4.DateTime
+						Author    struct {
+							Login githubv4.String
+						}
+						Replies struct {
+							PageInfo struct {
+								// TODO WARN
+								HasNextPage githubv4.Boolean
+							}
+							Nodes []struct {
+								ID        string
+								CreatedAt githubv4.DateTime
+								UpdatedAt githubv4.DateTime
+								Author    struct {
+									Login githubv4.String
+								}
+								ReplyTo struct {
+									ID string
+									// ID githubv4.ID
+								}
+							}
+						} `graphql:"replies(last: 100)"`
+					}
+				} `graphql:"comments(first: 100, after: $cursor)"`
+			} `graphql:"discussion(number: $number)"`
+		} `graphql:"repository(owner: $owner, name: $name)"`
+	}
+
+	var comments []db.InsertDiscussionCommentParams
+
+	variables = map[string]any{
+		"owner":  githubv4.String(org),
+		"name":   githubv4.String(repo),
+		"number": githubv4.Int(number),
+		"cursor": (*githubv4.String)(nil), // Null after argument to get first page.
+	}
+
+	for {
+		err := gqlClient.Query(ctx, &discussionCommentsQuery, variables)
+		if err != nil {
+			return db.InsertDiscussionParams{}, nil, fmt.Errorf("failed to query: %w", err)
+		}
+
+		for _, node := range discussionCommentsQuery.Repository.Discussion.Comments.Nodes {
+			comments = append(comments, db.InsertDiscussionCommentParams{
+				DiscussionNumber: number,
+				ID:               node.ID,
+				CreatedAt:        node.CreatedAt.Format(time.RFC3339),
+				UpdatedAt:        node.UpdatedAt.Format(time.RFC3339),
+				Author:           string(node.Author.Login),
+				// top-level comments don't have a reply
+			})
+
+			if node.Replies.PageInfo.HasNextPage {
+				slog.Warn(fmt.Sprintf("TODO: The %s/%s Discussion %s has a reply (ID %v) which has >100 replies. Only fetching last 100", org, repo, number, node.ID))
+			}
+
+			for _, reply := range node.Replies.Nodes {
+				comments = append(comments, db.InsertDiscussionCommentParams{
+					DiscussionNumber: number,
+					ID:               reply.ID,
+					CreatedAt:        reply.CreatedAt.Format(time.RFC3339),
+					UpdatedAt:        reply.UpdatedAt.Format(time.RFC3339),
+					Author:           string(reply.Author.Login),
+					ReplyTo: sql.NullString{
+						String: reply.ReplyTo.ID,
+						Valid:  true,
+					},
+				})
+			}
+		}
+
+		if !discussionCommentsQuery.Repository.Discussion.Comments.PageInfo.HasNextPage {
+			break
+		}
+		variables["cursor"] = githubv4.NewString(discussionCommentsQuery.Repository.Discussion.Comments.PageInfo.EndCursor)
+	}
+
+	return discussion, comments, nil
 }

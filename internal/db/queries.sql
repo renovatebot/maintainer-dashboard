@@ -24,3 +24,16 @@ insert into
     )
 values
     (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- name: InsertDiscussionComment :exec
+insert into
+    discussion_comments (
+        discussion_number,
+        id,
+        created_at,
+        updated_at,
+        author,
+        reply_to
+    )
+values
+    (?, ?, ?, ?, ?, ?);
