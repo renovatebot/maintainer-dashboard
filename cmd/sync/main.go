@@ -93,6 +93,40 @@ func main() {
 
 	discussionsToSync := missing(discussionsToCheck, found)
 	fmt.Printf("discussionsToSync: %v\n", discussionsToSync)
+
+	// TODO look up existing copies
+
+	retrieveMissingDiscussionsTracker := progress.Tracker{
+		Message: "Retrieving missing Discussions (and comments)",
+		Total:   int64(len(discussionsToSync)),
+	}
+	pw.AppendTracker(&retrieveMissingDiscussionsTracker)
+
+	for _, number := range discussionsToSync {
+		d, _, err := github.RetrieveDiscussionAndComments(ctx, client, gqlClient, "renovatebot", "renovate", number)
+		if err != nil {
+			retrieveMissingDiscussionsTracker.IncrementWithError(1)
+			logger.Error(fmt.Sprintf("Failed to query **??**: %v", err), "err", err)
+			continue
+		}
+
+		err = queries.InsertDiscussion(ctx, d)
+		if err != nil {
+			retrieveMissingDiscussionsTracker.IncrementWithError(1)
+			logger.Error(fmt.Sprintf("Failed to query **??**: %v", err), "err", err)
+			continue
+		}
+		retrieveMissingDiscussionsTracker.Increment(1)
+	}
+
+	retrieveMissingDiscussionsTracker.MarkAsDone()
+
+	// fmt.Printf("err: %v\n", err)
+	// b, _ := json.Marshal(d)
+	// fmt.Printf("b: %s\n", b)
+	//
+	// panic("todo")
+	//
 }
 
 func missing(numbers, existing []int64) []int64 {

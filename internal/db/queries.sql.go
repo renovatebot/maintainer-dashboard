@@ -7,6 +7,8 @@ package db
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
 	"strings"
 )
 
@@ -50,4 +52,57 @@ func (q *Queries) FindKnownDiscussions(ctx context.Context, numbers []int64) ([]
 		return nil, err
 	}
 	return items, nil
+}
+
+const insertDiscussion = `-- name: InsertDiscussion :exec
+insert into
+    discussions (
+        number,
+        title,
+        url,
+        state,
+        created_at,
+        updated_at,
+        closed_at,
+        author,
+        category_name,
+        answer_chosen_at,
+        answered_by,
+        labels
+    )
+values
+    (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`
+
+type InsertDiscussionParams struct {
+	Number         int64
+	Title          string
+	Url            string
+	State          string
+	CreatedAt      string
+	UpdatedAt      string
+	ClosedAt       string
+	Author         string
+	CategoryName   string
+	AnswerChosenAt sql.NullString
+	AnsweredBy     sql.NullString
+	Labels         json.RawMessage
+}
+
+func (q *Queries) InsertDiscussion(ctx context.Context, arg InsertDiscussionParams) error {
+	_, err := q.db.ExecContext(ctx, insertDiscussion,
+		arg.Number,
+		arg.Title,
+		arg.Url,
+		arg.State,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+		arg.ClosedAt,
+		arg.Author,
+		arg.CategoryName,
+		arg.AnswerChosenAt,
+		arg.AnsweredBy,
+		arg.Labels,
+	)
+	return err
 }

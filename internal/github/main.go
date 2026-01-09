@@ -2,11 +2,16 @@ package github
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/bradleyfalzon/ghinstallation/v2"
 	"github.com/google/go-github/v81/github"
+	"github.com/renovatebot/maintainer-dashboard/internal/db"
 	"github.com/shurcooL/githubv4"
 )
 
@@ -115,4 +120,107 @@ func ListDiscussionNumbers(ctx context.Context, client *github.Client, gqlClient
 		}
 		variables["cursor"] = githubv4.NewString(q.Repository.Discussions.PageInfo.EndCursor)
 	}
+}
+
+func RetrieveDiscussionAndComments(ctx context.Context, client *github.Client, gqlClient *githubv4.Client, org, repo string, number int64) (db.InsertDiscussionParams, []db.DiscussionComment, error) {
+	var discussionQuery struct {
+		Repository struct {
+			Discussion struct {
+				Title       githubv4.String
+				URL         githubv4.URI
+				StateReason *githubv4.String
+				CreatedAt   githubv4.DateTime
+				UpdatedAt   githubv4.DateTime
+				ClosedAt    *githubv4.DateTime
+				Author      struct {
+					Login githubv4.String
+				}
+				Category struct {
+					Name githubv4.String
+				}
+				Labels struct {
+					Edges []struct {
+						Node struct {
+							Name githubv4.String
+						}
+					}
+				} `graphql:"labels(first:100)"`
+				AnswerChosenAt *githubv4.DateTime
+				Answer         *struct {
+					Author struct {
+						Login githubv4.String
+					}
+				}
+			} `graphql:"discussion(number: $number)"`
+		} `graphql:"repository(owner: $owner, name: $name)"`
+	}
+
+	variables := map[string]any{
+		"owner":  githubv4.String(org),
+		"name":   githubv4.String(repo),
+		"number": githubv4.Int(number),
+	}
+
+	err := gqlClient.Query(ctx, &discussionQuery, variables)
+	if err != nil {
+		return db.InsertDiscussionParams{}, nil, fmt.Errorf("failed to query %v/%v Discussion %v: %w", org, repo, number, err)
+	}
+
+	discussion := db.InsertDiscussionParams{
+		Number: number,
+		Title:  string(discussionQuery.Repository.Discussion.Title),
+		Url:    discussionQuery.Repository.Discussion.URL.String(),
+		// Updated below
+		State:     "OPEN",
+		CreatedAt: discussionQuery.Repository.Discussion.CreatedAt.Format(time.RFC3339),
+		UpdatedAt: discussionQuery.Repository.Discussion.UpdatedAt.Format(time.RFC3339),
+		// ClosedAt is handled below
+		Author:       string(discussionQuery.Repository.Discussion.Author.Login),
+		CategoryName: string(discussionQuery.Repository.Discussion.Category.Name),
+		// AnswerChosenAt: sql.NullString{
+		// 	String: "",
+		// 	Valid:  false,
+		// },
+		// AnsweredBy: sql.NullString{
+		// 	String: "",
+		// 	Valid:  false,
+		// },
+		Labels: []byte("[]"),
+	}
+
+	if discussionQuery.Repository.Discussion.StateReason != nil {
+		discussion.State = string(*discussionQuery.Repository.Discussion.StateReason)
+	}
+
+	if discussionQuery.Repository.Discussion.ClosedAt != nil {
+		discussion.ClosedAt = discussionQuery.Repository.Discussion.ClosedAt.Format(time.RFC3339)
+	}
+
+	if discussionQuery.Repository.Discussion.AnswerChosenAt != nil {
+		discussion.AnswerChosenAt = sql.NullString{
+			String: discussionQuery.Repository.Discussion.AnswerChosenAt.Format(time.RFC3339),
+			Valid:  true,
+		}
+	}
+
+	if discussionQuery.Repository.Discussion.Answer != nil {
+		discussion.AnsweredBy = sql.NullString{
+			String: string(discussionQuery.Repository.Discussion.Answer.Author.Login),
+			Valid:  true,
+		}
+	}
+
+	var labels []string
+	for _, edge := range discussionQuery.Repository.Discussion.Labels.Edges {
+		labels = append(labels, string(edge.Node.Name))
+	}
+
+	if len(labels) > 0 {
+		discussion.Labels, err = json.Marshal(labels)
+		if err != nil {
+			return db.InsertDiscussionParams{}, nil, fmt.Errorf("failed to query: %w", err)
+		}
+	}
+
+	return discussion, nil, nil
 }
