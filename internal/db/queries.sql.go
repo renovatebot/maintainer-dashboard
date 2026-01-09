@@ -10,17 +10,17 @@ import (
 	"strings"
 )
 
-const findMissingDiscussions = `-- name: FindMissingDiscussions :many
+const findKnownDiscussions = `-- name: FindKnownDiscussions :many
 select
-    number, title, url, state, created_at, updated_at, closed_at, author, category_name, answer_chosen_at, answered_by
+    number
 from
     discussions
 where
-    number not in (/*SLICE:numbers*/?)
+    number in (/*SLICE:numbers*/?)
 `
 
-func (q *Queries) FindMissingDiscussions(ctx context.Context, numbers []int64) ([]Discussion, error) {
-	query := findMissingDiscussions
+func (q *Queries) FindKnownDiscussions(ctx context.Context, numbers []int64) ([]int64, error) {
+	query := findKnownDiscussions
 	var queryParams []interface{}
 	if len(numbers) > 0 {
 		for _, v := range numbers {
@@ -35,25 +35,13 @@ func (q *Queries) FindMissingDiscussions(ctx context.Context, numbers []int64) (
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Discussion
+	var items []int64
 	for rows.Next() {
-		var i Discussion
-		if err := rows.Scan(
-			&i.Number,
-			&i.Title,
-			&i.Url,
-			&i.State,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.ClosedAt,
-			&i.Author,
-			&i.CategoryName,
-			&i.AnswerChosenAt,
-			&i.AnsweredBy,
-		); err != nil {
+		var number int64
+		if err := rows.Scan(&number); err != nil {
 			return nil, err
 		}
-		items = append(items, i)
+		items = append(items, number)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err

@@ -1,7 +1,7 @@
--- name: FindMissingDiscussions :many
+-- name: FindKnownDiscussions :many
 select
-    *
+    number
 from
     discussions
 where
-    number not in (sqlc.slice('numbers'));
+    number in (sqlc.slice('numbers'));
