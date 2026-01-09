@@ -6,15 +6,19 @@ title: Open Discussions
 
 ```sql categories
 select
-    distinct category_name
+    distinct category_name,
+    category_name || ' (' || count(1) || ' total)' as label
 from
     discussions
+group by
+    category_name
 ```
 
 <Dropdown
 name=category_name
 data={categories}
 value=category_name
+label=label
 />
 
 
