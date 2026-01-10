@@ -2,6 +2,86 @@
 title: Open Discussions
 ---
 
+## Open Discussions, by category
+
+```sql open_request_help
+select
+    number,
+    ANY_VALUE(title) as title,
+    ANY_VALUE(url) as url,
+    ANY_VALUE(discussions.created_at) as created_at,
+    ANY_VALUE(discussions.updated_at),
+    count(discussion_comments.discussion_number)
+from
+    discussions
+    left join discussion_comments on discussion_comments.discussion_number = discussions.number
+where
+    (
+        state = 'OPEN'
+        or state = 'REOPENED'
+    )
+    and category_name = 'Request Help'
+group by
+    discussions.number,
+    discussions.created_at
+order by
+    discussions.created_at desc
+```
+
+<DataTable data={open_request_help} />
+
+```sql open_suggest_idea
+select
+    number,
+    ANY_VALUE(title) as title,
+    ANY_VALUE(url) as url,
+    ANY_VALUE(discussions.created_at) as created_at,
+    ANY_VALUE(discussions.updated_at),
+    count(discussion_comments.discussion_number)
+from
+    discussions
+    left join discussion_comments on discussion_comments.discussion_number = discussions.number
+where
+    (
+        state = 'OPEN'
+        or state = 'REOPENED'
+    )
+    and category_name = 'Suggest an Idea'
+group by
+    discussions.number,
+    discussions.created_at
+order by
+    discussions.created_at desc
+```
+
+<DataTable data={open_suggest_idea} />
+
+```sql open_mend_hosted
+select
+    number,
+    ANY_VALUE(title) as title,
+    ANY_VALUE(url) as url,
+    ANY_VALUE(discussions.created_at) as created_at,
+    ANY_VALUE(discussions.updated_at),
+    count(discussion_comments.discussion_number)
+from
+    discussions
+    left join discussion_comments on discussion_comments.discussion_number = discussions.number
+where
+    (
+        state = 'OPEN'
+        or state = 'REOPENED'
+    )
+    and category_name = 'Mend Hosted Request'
+group by
+    discussions.number,
+    discussions.created_at
+order by
+    discussions.created_at desc
+```
+
+<DataTable data={open_mend_hosted} />
+
 ## Open Discussions, by age
 
 ```sql open_age
