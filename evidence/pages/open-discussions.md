@@ -2,6 +2,23 @@
 title: Open Discussions
 ---
 
+```sql categories
+select
+    distinct category_name,
+    category_name || ' (' || count(1) || ' total)' as label
+from
+    discussions
+group by
+    category_name
+```
+
+<Dropdown
+name=category_name
+data={categories}
+value=category_name
+label=label
+/>
+
 ## Open Discussions, by category
 
 ```sql open_request_help
@@ -217,24 +234,6 @@ title="Closed Discussions, by creation date"
 />
 
 ## Open Discussions, with no comments
-
-```sql categories
-select
-    distinct category_name,
-    category_name || ' (' || count(1) || ' total)' as label
-from
-    discussions
-group by
-    category_name
-```
-
-<Dropdown
-name=category_name
-data={categories}
-value=category_name
-label=label
-/>
-
 
 ```sql open_no_comments
 select
