@@ -30,6 +30,9 @@ type Discussion struct {
 	AnswerChosenAt sql.NullString
 	AnsweredBy     sql.NullString
 	Labels         json.RawMessage
+	Body           sql.NullString
+	UpvoteCount    sql.NullInt64
+	AnswerChosenBy sql.NullString
 }
 
 type DiscussionComment struct {
@@ -39,4 +42,6 @@ type DiscussionComment struct {
 	UpdatedAt        string
 	Author           string
 	ReplyTo          sql.NullString
+	Body             sql.NullString
+	UpvoteCount      sql.NullInt64
 }

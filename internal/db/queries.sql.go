@@ -89,11 +89,14 @@ insert into
         author,
         category_name,
         answer_chosen_at,
+        answer_chosen_by,
         answered_by,
-        labels
+        labels,
+        body,
+        upvote_count
     )
 values
-    (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) on conflict(number) do
+    (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) on conflict(number) do
 update
 set
     title = excluded.title,
@@ -105,8 +108,11 @@ set
     author = excluded.author,
     category_name = excluded.category_name,
     answer_chosen_at = excluded.answer_chosen_at,
+    answer_chosen_by = excluded.answer_chosen_by,
     answered_by = excluded.answered_by,
-    labels = excluded.labels
+    labels = excluded.labels,
+    body = excluded.body,
+    upvote_count = excluded.upvote_count
 `
 
 type InsertDiscussionParams struct {
@@ -120,8 +126,11 @@ type InsertDiscussionParams struct {
 	Author         string
 	CategoryName   string
 	AnswerChosenAt sql.NullString
+	AnswerChosenBy sql.NullString
 	AnsweredBy     sql.NullString
 	Labels         json.RawMessage
+	Body           sql.NullString
+	UpvoteCount    sql.NullInt64
 }
 
 func (q *Queries) InsertDiscussion(ctx context.Context, arg InsertDiscussionParams) error {
@@ -136,8 +145,11 @@ func (q *Queries) InsertDiscussion(ctx context.Context, arg InsertDiscussionPara
 		arg.Author,
 		arg.CategoryName,
 		arg.AnswerChosenAt,
+		arg.AnswerChosenBy,
 		arg.AnsweredBy,
 		arg.Labels,
+		arg.Body,
+		arg.UpvoteCount,
 	)
 	return err
 }
@@ -150,17 +162,21 @@ insert into
         created_at,
         updated_at,
         author,
-        reply_to
+        reply_to,
+        body,
+        upvote_count
     )
 values
-    (?, ?, ?, ?, ?, ?) on conflict(id) do
+    (?, ?, ?, ?, ?, ?, ?, ?) on conflict(id) do
 update
 set
     id = excluded.id,
     created_at = excluded.created_at,
     updated_at = excluded.updated_at,
     author = excluded.author,
-    reply_to = excluded.reply_to
+    reply_to = excluded.reply_to,
+    body = excluded.body,
+    upvote_count = excluded.upvote_count
 `
 
 type InsertDiscussionCommentParams struct {
@@ -170,6 +186,8 @@ type InsertDiscussionCommentParams struct {
 	UpdatedAt        string
 	Author           string
 	ReplyTo          sql.NullString
+	Body             sql.NullString
+	UpvoteCount      sql.NullInt64
 }
 
 func (q *Queries) InsertDiscussionComment(ctx context.Context, arg InsertDiscussionCommentParams) error {
@@ -180,6 +198,8 @@ func (q *Queries) InsertDiscussionComment(ctx context.Context, arg InsertDiscuss
 		arg.UpdatedAt,
 		arg.Author,
 		arg.ReplyTo,
+		arg.Body,
+		arg.UpvoteCount,
 	)
 	return err
 }

@@ -28,11 +28,14 @@ insert into
         author,
         category_name,
         answer_chosen_at,
+        answer_chosen_by,
         answered_by,
-        labels
+        labels,
+        body,
+        upvote_count
     )
 values
-    (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) on conflict(number) do
+    (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) on conflict(number) do
 update
 set
     title = excluded.title,
@@ -44,8 +47,11 @@ set
     author = excluded.author,
     category_name = excluded.category_name,
     answer_chosen_at = excluded.answer_chosen_at,
+    answer_chosen_by = excluded.answer_chosen_by,
     answered_by = excluded.answered_by,
-    labels = excluded.labels;
+    labels = excluded.labels,
+    body = excluded.body,
+    upvote_count = excluded.upvote_count;
 
 -- name: InsertDiscussionComment :exec
 insert into
@@ -55,14 +61,18 @@ insert into
         created_at,
         updated_at,
         author,
-        reply_to
+        reply_to,
+        body,
+        upvote_count
     )
 values
-    (?, ?, ?, ?, ?, ?) on conflict(id) do
+    (?, ?, ?, ?, ?, ?, ?, ?) on conflict(id) do
 update
 set
     id = excluded.id,
     created_at = excluded.created_at,
     updated_at = excluded.updated_at,
     author = excluded.author,
-    reply_to = excluded.reply_to;
+    reply_to = excluded.reply_to,
+    body = excluded.body,
+    upvote_count = excluded.upvote_count;

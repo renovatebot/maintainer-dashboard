@@ -45,3 +45,28 @@ create table if not exists categories (
     is_answerable INTEGER not null check (is_answerable in (0, 1)),
     updated_at text not null
 );
+
+alter table
+    discussions
+add
+    column body text;
+
+alter table
+    discussion_comments
+add
+    column body text;
+
+alter table
+    discussions
+add
+    column upvote_count integer;
+
+alter table
+    discussion_comments
+add
+    column upvote_count integer;
+
+alter table
+    discussions
+add
+    column answer_chosen_by text;

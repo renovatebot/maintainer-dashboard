@@ -74,6 +74,11 @@ func RetrieveDiscussionAndComments(ctx context.Context, client *github.Client, g
 						Login githubv4.String
 					}
 				}
+				Body           githubv4.String
+				UpvoteCount    githubv4.Int
+				AnswerChosenBy *struct {
+					Login githubv4.String
+				}
 			} `graphql:"discussion(number: $number)"`
 		} `graphql:"repository(owner: $owner, name: $name)"`
 	}
@@ -103,6 +108,15 @@ func RetrieveDiscussionAndComments(ctx context.Context, client *github.Client, g
 		// AnswerChosenAt is handled below
 		// AnswerBy is handled below
 		Labels: []byte("[]"),
+		Body: sql.NullString{
+			String: string(discussionQuery.Repository.Discussion.Body),
+			Valid:  true,
+		},
+		UpvoteCount: sql.NullInt64{
+			Int64: int64(discussionQuery.Repository.Discussion.UpvoteCount),
+			Valid: true,
+		},
+		// AnswerChosenBy is handled below
 	}
 
 	if discussionQuery.Repository.Discussion.StateReason != nil {
@@ -126,6 +140,13 @@ func RetrieveDiscussionAndComments(ctx context.Context, client *github.Client, g
 	if discussionQuery.Repository.Discussion.Answer != nil {
 		discussion.AnsweredBy = sql.NullString{
 			String: string(discussionQuery.Repository.Discussion.Answer.Author.Login),
+			Valid:  true,
+		}
+	}
+
+	if discussionQuery.Repository.Discussion.AnswerChosenBy != nil {
+		discussion.AnswerChosenBy = sql.NullString{
+			String: string(discussionQuery.Repository.Discussion.AnswerChosenBy.Login),
 			Valid:  true,
 		}
 	}
@@ -157,7 +178,9 @@ func RetrieveDiscussionAndComments(ctx context.Context, client *github.Client, g
 						Author    struct {
 							Login githubv4.String
 						}
-						Replies struct {
+						Body        githubv4.String
+						UpvoteCount githubv4.Int
+						Replies     struct {
 							PageInfo struct {
 								// TODO WARN
 								HasNextPage githubv4.Boolean
@@ -173,6 +196,8 @@ func RetrieveDiscussionAndComments(ctx context.Context, client *github.Client, g
 									ID string
 									// ID githubv4.ID
 								}
+								Body        githubv4.String
+								UpvoteCount githubv4.Int
 							}
 						} `graphql:"replies(last: 100)"`
 					}
@@ -204,6 +229,14 @@ func RetrieveDiscussionAndComments(ctx context.Context, client *github.Client, g
 				UpdatedAt:        node.UpdatedAt.Format(time.RFC3339),
 				Author:           string(node.Author.Login),
 				// top-level comments don't have a reply
+				Body: sql.NullString{
+					String: string(node.Body),
+					Valid:  true,
+				},
+				UpvoteCount: sql.NullInt64{
+					Int64: int64(node.UpvoteCount),
+					Valid: true,
+				},
 			})
 
 			if node.Replies.PageInfo.HasNextPage {
@@ -220,6 +253,14 @@ func RetrieveDiscussionAndComments(ctx context.Context, client *github.Client, g
 					ReplyTo: sql.NullString{
 						String: reply.ReplyTo.ID,
 						Valid:  true,
+					},
+					Body: sql.NullString{
+						String: string(reply.Body),
+						Valid:  true,
+					},
+					UpvoteCount: sql.NullInt64{
+						Int64: int64(reply.UpvoteCount),
+						Valid: true,
 					},
 				})
 			}
