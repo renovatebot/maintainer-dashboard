@@ -45,84 +45,6 @@ func NewGraphQLClient(appId, installationId int64, appKeyPath string) *githubv4.
 	return githubv4.NewClient(&http.Client{Transport: itr})
 }
 
-/*
-- List all Discussions (number)
-{
-  repository(owner: "renovatebot", name: "renovate") {
-    discussions(first:50, orderBy:{field:UPDATED_AT, direction:DESC}){
-      pageInfo {
-        hasNextPage
-      }
-      edges {
-        node {
-          number
-        }
-      }
-    }
-  }
-}
-- What don't we have?
-  - Sync those fully
-
-- What do we have?
-  - what's newer than what we have?
-*/
-
-type ListDiscussionNumbersResult struct {
-	Number int64
-	Error  error
-}
-
-func ListDiscussionNumbers(ctx context.Context, client *github.Client, gqlClient *githubv4.Client, org, repo string, results chan<- ListDiscussionNumbersResult, done chan<- struct{}) {
-	defer close(done)
-
-	var q struct {
-		Repository struct {
-			Discussions struct {
-				PageInfo struct {
-					EndCursor   githubv4.String
-					HasNextPage githubv4.Boolean
-				}
-				Edges []struct {
-					Node struct {
-						Number int64
-					}
-				}
-			} `graphql:"discussions(first: 100, orderBy: {field: CREATED_AT, direction: ASC}, after: $cursor)"`
-		} `graphql:"repository(owner: $owner, name: $name)"`
-	}
-	variables := map[string]any{
-		"owner":  githubv4.String(org),
-		"name":   githubv4.String(repo),
-		"cursor": (*githubv4.String)(nil), // Null after argument to get first page.
-	}
-
-	// // Get comments from all pages.
-	// var allComments []comment
-	for {
-		err := gqlClient.Query(ctx, &q, variables)
-		if err != nil {
-			results <- ListDiscussionNumbersResult{
-				Error: err,
-			}
-			// TODO
-			// close(done)
-			return
-			// return err
-		}
-		for _, edge := range q.Repository.Discussions.Edges {
-			results <- ListDiscussionNumbersResult{
-				Number: edge.Node.Number,
-			}
-		}
-
-		if !q.Repository.Discussions.PageInfo.HasNextPage {
-			break
-		}
-		variables["cursor"] = githubv4.NewString(q.Repository.Discussions.PageInfo.EndCursor)
-	}
-}
-
 func RetrieveDiscussionAndComments(ctx context.Context, client *github.Client, gqlClient *githubv4.Client, org, repo string, number int64) (db.InsertDiscussionParams, []db.InsertDiscussionCommentParams, error) {
 	var discussionQuery struct {
 		Repository struct {
@@ -310,4 +232,83 @@ func RetrieveDiscussionAndComments(ctx context.Context, client *github.Client, g
 	}
 
 	return discussion, comments, nil
+}
+
+func GetMostRecentlyUpdatedDiscussion(ctx context.Context, client *github.Client, gqlClient *githubv4.Client, org, repo string) (time.Time, error) {
+	var q struct {
+		Repository struct {
+			Discussions struct {
+				PageInfo struct {
+					EndCursor   githubv4.String
+					HasNextPage githubv4.Boolean
+				}
+				Edges []struct {
+					Node struct {
+						Number    int64
+						UpdatedAt githubv4.DateTime
+					}
+				}
+			} `graphql:"discussions(first: 1, orderBy:{field:UPDATED_AT, direction:DESC})"`
+		} `graphql:"repository(owner: $owner, name: $name)"`
+	}
+	variables := map[string]any{
+		"owner": githubv4.String(org),
+		"name":  githubv4.String(repo),
+	}
+
+	err := gqlClient.Query(ctx, &q, variables)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to **??**: %w", err)
+	}
+
+	if len(q.Repository.Discussions.Edges) == 0 {
+		return time.Time{}, nil
+	}
+
+	return q.Repository.Discussions.Edges[0].Node.UpdatedAt.Time, nil
+}
+
+type MostRecentlyUpdatedDiscussion struct {
+	Number    int64
+	UpdatedAt time.Time
+}
+
+func ListMostRecentlyUpdatedDiscussions(ctx context.Context, client *github.Client, gqlClient *githubv4.Client, org, repo string, mostRecent int, cursor *githubv4.String) ([]MostRecentlyUpdatedDiscussion, *githubv4.String, error) {
+	var q struct {
+		Repository struct {
+			Discussions struct {
+				PageInfo struct {
+					EndCursor   githubv4.String
+					HasNextPage githubv4.Boolean
+				}
+				Edges []struct {
+					Node struct {
+						Number    int64
+						UpdatedAt githubv4.DateTime
+					}
+				}
+			} `graphql:"discussions(first: $mostRecent, orderBy:{field:UPDATED_AT, direction:DESC}, after: $cursor)"`
+		} `graphql:"repository(owner: $owner, name: $name)"`
+	}
+	variables := map[string]any{
+		"owner":      githubv4.String(org),
+		"name":       githubv4.String(repo),
+		"mostRecent": githubv4.Int(mostRecent),
+		"cursor":     cursor,
+	}
+
+	var results []MostRecentlyUpdatedDiscussion
+
+	err := gqlClient.Query(ctx, &q, variables)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to **??**: %w", err)
+	}
+	for _, edge := range q.Repository.Discussions.Edges {
+		results = append(results, MostRecentlyUpdatedDiscussion{
+			Number:    edge.Node.Number,
+			UpdatedAt: edge.Node.UpdatedAt.Time,
+		})
+	}
+
+	return results, &q.Repository.Discussions.PageInfo.EndCursor, nil
 }

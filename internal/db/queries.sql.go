@@ -12,17 +12,39 @@ import (
 	"strings"
 )
 
-const findKnownDiscussions = `-- name: FindKnownDiscussions :many
+const findMostRecentlyUpdatedDiscussion = `-- name: FindMostRecentlyUpdatedDiscussion :one
 select
-    number
+    updated_at
+from
+    discussions
+limit
+    1
+`
+
+func (q *Queries) FindMostRecentlyUpdatedDiscussion(ctx context.Context) (string, error) {
+	row := q.db.QueryRowContext(ctx, findMostRecentlyUpdatedDiscussion)
+	var updated_at string
+	err := row.Scan(&updated_at)
+	return updated_at, err
+}
+
+const findUpdatedTimesForDiscussions = `-- name: FindUpdatedTimesForDiscussions :many
+select
+    number,
+    updated_at
 from
     discussions
 where
     number in (/*SLICE:numbers*/?)
 `
 
-func (q *Queries) FindKnownDiscussions(ctx context.Context, numbers []int64) ([]int64, error) {
-	query := findKnownDiscussions
+type FindUpdatedTimesForDiscussionsRow struct {
+	Number    int64
+	UpdatedAt string
+}
+
+func (q *Queries) FindUpdatedTimesForDiscussions(ctx context.Context, numbers []int64) ([]FindUpdatedTimesForDiscussionsRow, error) {
+	query := findUpdatedTimesForDiscussions
 	var queryParams []interface{}
 	if len(numbers) > 0 {
 		for _, v := range numbers {
@@ -37,13 +59,13 @@ func (q *Queries) FindKnownDiscussions(ctx context.Context, numbers []int64) ([]
 		return nil, err
 	}
 	defer rows.Close()
-	var items []int64
+	var items []FindUpdatedTimesForDiscussionsRow
 	for rows.Next() {
-		var number int64
-		if err := rows.Scan(&number); err != nil {
+		var i FindUpdatedTimesForDiscussionsRow
+		if err := rows.Scan(&i.Number, &i.UpdatedAt); err != nil {
 			return nil, err
 		}
-		items = append(items, number)
+		items = append(items, i)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -71,7 +93,20 @@ insert into
         labels
     )
 values
-    (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) on conflict(number) do
+update
+set
+    title = excluded.title,
+    url = excluded.url,
+    state = excluded.state,
+    created_at = excluded.created_at,
+    updated_at = excluded.updated_at,
+    closed_at = excluded.closed_at,
+    author = excluded.author,
+    category_name = excluded.category_name,
+    answer_chosen_at = excluded.answer_chosen_at,
+    answered_by = excluded.answered_by,
+    labels = excluded.labels
 `
 
 type InsertDiscussionParams struct {
@@ -118,7 +153,14 @@ insert into
         reply_to
     )
 values
-    (?, ?, ?, ?, ?, ?)
+    (?, ?, ?, ?, ?, ?) on conflict(id) do
+update
+set
+    id = excluded.id,
+    created_at = excluded.created_at,
+    updated_at = excluded.updated_at,
+    author = excluded.author,
+    reply_to = excluded.reply_to
 `
 
 type InsertDiscussionCommentParams struct {

@@ -2,14 +2,18 @@ package main
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
 	"os"
+	"time"
 
 	"github.com/jedib0t/go-pretty/v6/progress"
 	"github.com/renovatebot/maintainer-dashboard/internal/db"
 	"github.com/renovatebot/maintainer-dashboard/internal/github"
+	"github.com/shurcooL/githubv4"
 )
 
 func main() {
@@ -50,100 +54,90 @@ func main() {
 	gqlClient := github.NewGraphQLClient(*appId, *installationId, *appKeyPath)
 
 	pw := progress.NewWriter()
-	listDiscussionsTracker := progress.Tracker{
-		Message: "List Discussions",
-		Total:   0,
-	}
-	pw.AppendTracker(&listDiscussionsTracker)
-
 	go pw.Render()
 
-	done := make(chan struct{})
-	results := make(chan github.ListDiscussionNumbersResult, 2)
-	go github.ListDiscussionNumbers(ctx, client, gqlClient, "renovatebot", "renovate", results, done)
-
-	var discussionsToCheck []int64
-
-	finished := false
-	for !finished {
-		select {
-		case res := <-results:
-			if res.Error != nil {
-				listDiscussionsTracker.IncrementWithError(1)
-				logger.Error(fmt.Sprintf("Failed to query discussion numbers: %v", err), "err", err)
-			} else {
-				listDiscussionsTracker.Increment(1)
-				discussionsToCheck = append(discussionsToCheck, res.Number)
-			}
-		case <-done:
-			finished = true
-		case <-ctx.Done():
-			finished = true
-		}
+	lastDBUpdateVal, err := queries.FindMostRecentlyUpdatedDiscussion(ctx)
+	if errors.Is(err, sql.ErrNoRows) {
+		lastDBUpdateVal = "1970-01-01T00:00:00Z"
+	} else if err != nil {
+		logger.Error(fmt.Sprintf("Failed to query **??**: %v", err), "err", err)
+		os.Exit(1)
 	}
 
-	listDiscussionsTracker.MarkAsDone()
-
-	// discussionsToSync, err := queries.FindMissingDiscussions(ctx, []any{discussionsToCheck})
-	found, err := queries.FindKnownDiscussions(ctx, discussionsToCheck)
+	lastDBUpdate, err := time.Parse(time.RFC3339, lastDBUpdateVal)
 	if err != nil {
 		logger.Error(fmt.Sprintf("Failed to query **??**: %v", err), "err", err)
 		os.Exit(1)
 	}
 
-	discussionsToSync := missing(discussionsToCheck, found)
-	// fmt.Printf("discussionsToSync: %v\n", discussionsToSync)
-
-	// TODO look up existing copies (will require updatedAt from the DB / in the GQL query to filter first)
-
-	retrieveMissingDiscussionsTracker := progress.Tracker{
-		Message: "Retrieving missing Discussions (and comments)",
-		Total:   int64(len(discussionsToSync)),
+	lastUpdate, err := github.GetMostRecentlyUpdatedDiscussion(ctx, client, gqlClient, "renovatebot", "renovate")
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to query **??**: %v", err), "err", err)
+		os.Exit(1)
 	}
-	pw.AppendTracker(&retrieveMissingDiscussionsTracker)
 
-	for _, number := range discussionsToSync {
-		d, comments, err := github.RetrieveDiscussionAndComments(ctx, client, gqlClient, "renovatebot", "renovate", number)
-		if err != nil {
-			retrieveMissingDiscussionsTracker.IncrementWithError(1)
-			logger.Error(fmt.Sprintf("Failed to query **??**: %v", err), "err", err)
-			continue
+	if lastDBUpdate.Equal(lastUpdate) || lastDBUpdate.After(lastUpdate) {
+		logger.Info("**??**, but up-to-date", "lastUpdateOnGitHub", lastUpdate, "lastUpdateInDatabase", lastDBUpdate)
+	} else {
+		finished := false
+
+		updateExistingDiscussionsTracker := progress.Tracker{
+			Message: "Updating existing Discussions (and comments)",
 		}
+		pw.AppendTracker(&updateExistingDiscussionsTracker)
 
-		err = queries.InsertDiscussion(ctx, d)
-		if err != nil {
-			retrieveMissingDiscussionsTracker.IncrementWithError(1)
-			logger.Error(fmt.Sprintf("Failed to query **??**: %v", err), "err", err)
-			continue
-		}
-
-		for _, comment := range comments {
-			// b, _ := json.Marshal(comment)
-			// fmt.Printf("b: %s\n", b)
-			err = queries.InsertDiscussionComment(ctx, comment)
+		var nextCursor *githubv4.String
+		for !finished {
+			var discussions []github.MostRecentlyUpdatedDiscussion
+			discussions, nextCursor, err = github.ListMostRecentlyUpdatedDiscussions(ctx, client, gqlClient, "renovatebot", "renovate", 10, nextCursor)
 			if err != nil {
-				retrieveMissingDiscussionsTracker.IncrementWithError(1)
-				logger.Error(fmt.Sprintf("Failed to query **??**: %v", err), "err", err)
+				logger.Error(fmt.Sprintf("Failed to query discussion numbers: %v", err), "err", err)
+				break
+			}
+
+			if discussions == nil {
+				finished = true
 				continue
 			}
+
+			if nextCursor == nil {
+				finished = true
+				continue
+			}
+
+			for _, discussion := range discussions {
+				// TODO transaction
+				if discussion.UpdatedAt.Before(lastDBUpdate) {
+					finished = true
+					break
+				}
+
+				d, comments, err := github.RetrieveDiscussionAndComments(ctx, client, gqlClient, "renovatebot", "renovate", discussion.Number)
+				if err != nil {
+					updateExistingDiscussionsTracker.IncrementWithError(1)
+					logger.Error(fmt.Sprintf("Failed to query **??**: %v", err), "err", err)
+					continue
+				}
+
+				err = queries.InsertDiscussion(ctx, d)
+				if err != nil {
+					updateExistingDiscussionsTracker.IncrementWithError(1)
+					logger.Error(fmt.Sprintf("Failed to query **??**: %v", err), "err", err)
+					continue
+				}
+
+				for _, comment := range comments {
+					err = queries.InsertDiscussionComment(ctx, comment)
+					if err != nil {
+						updateExistingDiscussionsTracker.IncrementWithError(1)
+						logger.Error(fmt.Sprintf("Failed to query **??**: %v", err), "err", err)
+						continue
+					}
+				}
+
+				updateExistingDiscussionsTracker.Increment(1)
+			}
 		}
-
-		retrieveMissingDiscussionsTracker.Increment(1)
+		updateExistingDiscussionsTracker.MarkAsDone()
 	}
-
-	retrieveMissingDiscussionsTracker.MarkAsDone()
-}
-
-func missing(numbers, existing []int64) []int64 {
-	existingSet := make(map[int64]struct{})
-	for _, n := range existing {
-		existingSet[n] = struct{}{}
-	}
-	var missing []int64
-	for _, n := range numbers {
-		if _, ok := existingSet[n]; !ok {
-			missing = append(missing, n)
-		}
-	}
-	return missing
 }
