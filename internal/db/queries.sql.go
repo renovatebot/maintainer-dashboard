@@ -12,6 +12,36 @@ import (
 	"strings"
 )
 
+const findKnownDiscussions = `-- name: FindKnownDiscussions :many
+select
+    number
+from
+    discussions
+`
+
+func (q *Queries) FindKnownDiscussions(ctx context.Context) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, findKnownDiscussions)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var number int64
+		if err := rows.Scan(&number); err != nil {
+			return nil, err
+		}
+		items = append(items, number)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const findMostRecentlyUpdatedDiscussion = `-- name: FindMostRecentlyUpdatedDiscussion :one
 select
     updated_at

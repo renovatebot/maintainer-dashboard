@@ -1,3 +1,9 @@
+-- name: FindKnownDiscussions :many
+select
+    number
+from
+    discussions;
+
 -- name: FindMostRecentlyUpdatedDiscussion :one
 select
     updated_at
