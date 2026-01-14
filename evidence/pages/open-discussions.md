@@ -398,3 +398,32 @@ limit
 
 <DataTable data={bumped_after_many_days_open} title="Open Discussions, bumped after some time" />
 <DataTable data={bumped_after_many_days_closed} title="Closed Discussions, bumped after some time" />
+
+## By upvote count
+
+```sql request_help_by_upvote
+select
+    discussions.upvote_count,
+    number,
+    ANY_VALUE(title) as title,
+    ANY_VALUE(url) as url,
+    ANY_VALUE(discussions.created_at) as created_at,
+    ANY_VALUE(discussions.updated_at),
+    count(discussion_comments.discussion_number)
+from
+    discussions
+    left join discussion_comments on discussion_comments.discussion_number = discussions.number
+where
+    (
+        state = 'OPEN'
+        or state = 'REOPENED'
+    )
+    and category_name = 'Request Help'
+group by
+    discussions.number,
+    discussions.upvote_count
+order by
+    discussions.upvote_count desc
+```
+
+<DataTable data={request_help_by_upvote} />
