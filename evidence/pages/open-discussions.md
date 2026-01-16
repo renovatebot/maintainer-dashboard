@@ -520,3 +520,34 @@ where
 ```
 
 <DataTable data={updated_since_bot} />
+
+## Needing maintainer input
+
+```sql needs_maintainer_input
+select
+    number,
+    ANY_VALUE(title) as title,
+    ANY_VALUE(url) as url,
+    ANY_VALUE(discussions.created_at) as created_at,
+    ANY_VALUE(discussions.updated_at),
+    count(discussion_comments.discussion_number)
+from
+    discussions
+    left join discussion_comments on discussion_comments.discussion_number = discussions.number,
+    json_each(discussions.labels)
+where
+    (
+        state = 'OPEN'
+        or state = 'REOPENED'
+    )
+    -- NOTE: the JSON value is the quoted string
+    and json_each.value = '"maintainer-input-needed"'
+group by
+    discussions.number,
+    discussions.created_at
+order by
+    discussions.created_at asc
+```
+
+
+<DataTable data={needs_maintainer_input} />
