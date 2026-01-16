@@ -427,3 +427,96 @@ order by
 ```
 
 <DataTable data={request_help_by_upvote} />
+
+## No reply since a GitHub Actions bot
+
+```sql no_reply_or_update_since_bot
+-- Co-authored-by: gpt-4.1 (GitHub Copilot)
+select
+    discussions.category_name || json_array(
+        (
+            select
+                list(value)
+            from
+                json_each(labels)
+            where
+                -- NOTE **??**
+                value like '"auto:%'
+        )
+    ) as series,
+    month,
+    count(1) as num,
+from
+    (
+        select
+            discussion_comments.discussion_number,
+            discussion_comments.author,
+            discussion_comments.created_at,
+            date_trunc('month', discussion_comments.created_at) as month,
+            row_number() over (
+                partition by discussion_comments.discussion_number
+                order by
+                    discussion_comments.updated_at asc -- not desc
+            ) as rn
+        from
+            discussion_comments
+    ) dc
+    inner join discussions on discussions.number = dc.discussion_number
+where
+    dc.rn = 1
+    and dc.author = 'github-actions'
+    and (
+        state = 'OPEN'
+        or state = 'REOPENED'
+    )
+    -- and hasn't been updated since
+    and discussions.updated_at <= dc.created_at
+group by
+    series,
+    month,
+    labels,
+```
+
+<BarChart
+data={no_reply_or_update_since_bot}
+series=series
+x=month
+y=num
+title="Open, but no answer since a `github-actions[bot]` reply"
+/>
+
+## Updated since a GitHub Actions bot
+
+```sql updated_since_bot
+-- Co-authored-by: gpt-4.1 (GitHub Copilot)
+select
+    url,
+    discussions.updated_at,
+    dc.created_at,
+from
+    (
+        select
+            discussion_comments.discussion_number,
+            discussion_comments.author,
+            discussion_comments.created_at,
+            date_trunc('month', discussion_comments.created_at) as month,
+            row_number() over (
+                partition by discussion_comments.discussion_number
+                order by
+                    discussion_comments.updated_at asc -- not desc
+            ) as rn
+        from
+            discussion_comments
+    ) dc
+    inner join discussions on discussions.number = dc.discussion_number
+where
+    dc.rn = 1
+    and dc.author = 'github-actions'
+    and (
+        state = 'OPEN'
+        or state = 'REOPENED'
+    )
+    and discussions.updated_at > dc.created_at
+```
+
+<DataTable data={updated_since_bot} />
