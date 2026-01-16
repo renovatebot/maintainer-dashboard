@@ -47,3 +47,64 @@ group by
 ```
 
 <BarChart data={states} title={inputs.category_name.value} />
+
+```sql category_open_close_over_time
+select
+    'Opened' as series,
+    month,
+    count(1) as num
+from
+    (
+        select
+            category_name,
+            date_trunc('month', discussions.created_at) as month,
+            count(1)
+        from
+            discussions
+        where
+            category_name = '${inputs.category_name.value}'
+            -- category_name = 'Request Help'
+        group by
+            category_name,
+            discussions.created_at
+        order by
+            discussions.created_at asc
+    )
+group by
+    category_name,
+    month
+union
+select
+    'Closed' as series,
+    month,
+    count(1) as num
+from
+    (
+        select
+            category_name,
+            date_trunc('month', discussions.closed_at) as month,
+            count(1)
+        from
+            discussions
+        where
+            category_name = '${inputs.category_name.value}'
+            -- category_name = 'Request Help'
+            and closed_at != '1970-01-01'
+        group by
+            category_name,
+            discussions.closed_at
+        order by
+            discussions.closed_at asc
+    )
+group by
+    category_name,
+    month
+```
+
+<BarChart
+data={category_open_close_over_time}
+series=series
+x=month
+y=num
+title={"Open/Close stats for '" + inputs.category_name.value + "' over time"}
+/>
