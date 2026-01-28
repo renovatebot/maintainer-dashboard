@@ -20,6 +20,7 @@ func main() {
 	appId := flag.Int64("app-id", -1, "The App ID of the GitHub App to authenticate as")
 	installationIds := flag.String("installation-ids", "", "Comma-separated list of installation IDs to rotate through based on rate limits (auto-discovers if not provided)")
 	appKeyPath := flag.String("app-key", "", "Path to the GitHub App Private Key")
+	fromNumber := flag.Int64("from", 0, "Only process discussions from this number onwards (inclusive)")
 
 	flag.Parse()
 
@@ -68,6 +69,20 @@ func main() {
 		Total:   int64(len(discussionNumbers)),
 	}
 	pw.AppendTracker(&updateExistingDiscussionsTracker)
+
+	// Filter discussions if -from flag is provided
+	if fromNumber != nil && *fromNumber > 0 {
+		var filtered []int64
+		for _, num := range discussionNumbers {
+			if num >= *fromNumber {
+				filtered = append(filtered, num)
+			} else {
+				updateExistingDiscussionsTracker.Increment(1)
+			}
+		}
+		discussionNumbers = filtered
+		logger.Info(fmt.Sprintf("Filtered to %d discussions from #%d onwards", len(discussionNumbers), *fromNumber))
+	}
 
 	for _, discussion := range discussionNumbers {
 		// Get next available client with sufficient rate limits
