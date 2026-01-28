@@ -18,8 +18,7 @@ func main() {
 
 	path := flag.String("db", "dashboard.sqlite", "Path to the SQLite database file")
 	appId := flag.Int64("app-id", -1, "The App ID of the GitHub App to authenticate as")
-	// TODO make this auto-detect installation(s)
-	installationId := flag.Int64("installation-id", -1, "The installation ID of the GitHub App to authenticate with")
+	installationIds := flag.String("installation-ids", "", "Comma-separated list of installation IDs to rotate through based on rate limits (auto-discovers if not provided)")
 	appKeyPath := flag.String("app-key", "", "Path to the GitHub App Private Key")
 
 	flag.Parse()
@@ -46,8 +45,14 @@ func main() {
 	}
 	queries := db.New(sqlDB)
 
-	client := github.NewClient(*appId, *installationId, *appKeyPath)
-	gqlClient := github.NewGraphQLClient(*appId, *installationId, *appKeyPath)
+	// Parse or discover installation IDs
+	installationIdList, err := github.ParseOrDiscoverInstallations(ctx, *installationIds, *appId, *appKeyPath, logger)
+	if err != nil {
+		logger.Error("Failed to get installation IDs", "err", err)
+		os.Exit(1)
+	}
+
+	clientPool := github.NewClientPool(*appId, installationIdList, *appKeyPath, logger)
 
 	pw := progress.NewWriter()
 	go pw.Render()
@@ -65,7 +70,10 @@ func main() {
 	pw.AppendTracker(&updateExistingDiscussionsTracker)
 
 	for _, discussion := range discussionNumbers {
-		d, comments, err := github.RetrieveDiscussionAndComments(ctx, client, gqlClient, "renovatebot", "renovate", discussion)
+		// Get next available client with sufficient rate limits
+		client := clientPool.GetNextAvailableClient(ctx)
+
+		d, comments, err := github.RetrieveDiscussionAndComments(ctx, client.RestClient, client.GqlClient, "renovatebot", "renovate", discussion)
 		if err != nil {
 			updateExistingDiscussionsTracker.IncrementWithError(1)
 			logger.Error(fmt.Sprintf("Failed to query **??**: %v", err), "err", err)

@@ -22,8 +22,7 @@ func main() {
 
 	path := flag.String("db", "dashboard.sqlite", "Path to the SQLite database file")
 	appId := flag.Int64("app-id", -1, "The App ID of the GitHub App to authenticate as")
-	// TODO make this auto-detect installation(s)
-	installationId := flag.Int64("installation-id", -1, "The installation ID of the GitHub App to authenticate with")
+	installationIds := flag.String("installation-ids", "", "Comma-separated list of installation IDs to rotate through based on rate limits (auto-discovers if not provided)")
 	appKeyPath := flag.String("app-key", "", "Path to the GitHub App Private Key")
 
 	flag.Parse()
@@ -50,8 +49,14 @@ func main() {
 	}
 	queries := db.New(sqlDB)
 
-	client := github.NewClient(*appId, *installationId, *appKeyPath)
-	gqlClient := github.NewGraphQLClient(*appId, *installationId, *appKeyPath)
+	// Parse or discover installation IDs
+	installationIdList, err := github.ParseOrDiscoverInstallations(ctx, *installationIds, *appId, *appKeyPath, logger)
+	if err != nil {
+		logger.Error("Failed to get installation IDs", "err", err)
+		os.Exit(1)
+	}
+
+	clientPool := github.NewClientPool(*appId, installationIdList, *appKeyPath, logger)
 
 	pw := progress.NewWriter()
 	go pw.Render()
@@ -70,7 +75,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	lastUpdate, err := github.GetMostRecentlyUpdatedDiscussion(ctx, client, gqlClient, "renovatebot", "renovate")
+	// Get a client for the initial check
+	clientPair := clientPool.GetNextAvailableClient(ctx)
+	lastUpdate, err := github.GetMostRecentlyUpdatedDiscussion(ctx, clientPair.RestClient, clientPair.GqlClient, "renovatebot", "renovate")
 	if err != nil {
 		logger.Error(fmt.Sprintf("Failed to query **??**: %v", err), "err", err)
 		os.Exit(1)
@@ -88,8 +95,11 @@ func main() {
 
 		var nextCursor *githubv4.String
 		for !finished {
+			// Get next available client with rate limit management
+			clientPair := clientPool.GetNextAvailableClient(ctx)
+
 			var discussions []github.MostRecentlyUpdatedDiscussion
-			discussions, nextCursor, err = github.ListMostRecentlyUpdatedDiscussions(ctx, client, gqlClient, "renovatebot", "renovate", 10, nextCursor)
+			discussions, nextCursor, err = github.ListMostRecentlyUpdatedDiscussions(ctx, clientPair.RestClient, clientPair.GqlClient, "renovatebot", "renovate", 10, nextCursor)
 			if err != nil {
 				logger.Error(fmt.Sprintf("Failed to query discussion numbers: %v", err), "err", err)
 				break
@@ -112,7 +122,9 @@ func main() {
 					break
 				}
 
-				d, comments, err := github.RetrieveDiscussionAndComments(ctx, client, gqlClient, "renovatebot", "renovate", discussion.Number)
+				// Get next available client for each discussion fetch
+				clientPair = clientPool.GetNextAvailableClient(ctx)
+				d, comments, err := github.RetrieveDiscussionAndComments(ctx, clientPair.RestClient, clientPair.GqlClient, "renovatebot", "renovate", discussion.Number)
 				if err != nil {
 					updateExistingDiscussionsTracker.IncrementWithError(1)
 					logger.Error(fmt.Sprintf("Failed to query **??**: %v", err), "err", err)

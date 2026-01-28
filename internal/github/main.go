@@ -8,6 +8,8 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/bradleyfalzon/ghinstallation/v2"
@@ -15,6 +17,20 @@ import (
 	"github.com/renovatebot/maintainer-dashboard/internal/db"
 	"github.com/shurcooL/githubv4"
 )
+
+// ClientPair holds a REST and GraphQL client for a specific installation
+type ClientPair struct {
+	RestClient *github.Client
+	GqlClient  *githubv4.Client
+	InstallID  int64
+}
+
+// ClientPool manages multiple GitHub client pairs for rate limit rotation
+type ClientPool struct {
+	clients      []ClientPair
+	currentIndex int
+	logger       *slog.Logger
+}
 
 func NewClient(appId, installationId int64, appKeyPath string) *github.Client {
 	// Shared transport to reuse TCP connections.
@@ -43,6 +59,186 @@ func NewGraphQLClient(appId, installationId int64, appKeyPath string) *githubv4.
 	}
 
 	return githubv4.NewClient(&http.Client{Transport: itr})
+}
+
+// ListInstallations retrieves all installations for a GitHub App
+func ListInstallations(ctx context.Context, appId int64, appKeyPath string) ([]int64, error) {
+	tr := http.DefaultTransport
+
+	// Create App-level authentication (not installation-specific)
+	atr, err := ghinstallation.NewAppsTransportKeyFromFile(tr, appId, appKeyPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create app transport: %w", err)
+	}
+
+	client := github.NewClient(&http.Client{Transport: atr})
+
+	// List all installations for this App
+	installations, _, err := client.Apps.ListInstallations(ctx, &github.ListOptions{
+		PerPage: 100,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list installations: %w", err)
+	}
+
+	var installationIds []int64
+	for _, installation := range installations {
+		if installation.ID != nil {
+			installationIds = append(installationIds, *installation.ID)
+		}
+	}
+
+	return installationIds, nil
+}
+
+// ParseOrDiscoverInstallations parses comma-separated installation IDs from a string,
+// or auto-discovers them if the string is empty
+func ParseOrDiscoverInstallations(ctx context.Context, installationIdsStr string, appId int64, appKeyPath string, logger *slog.Logger) ([]int64, error) {
+	if installationIdsStr != "" {
+		// Parse provided installation IDs
+		return ParseInstallationIds(installationIdsStr)
+	}
+
+	// Auto-discover installations
+	logger.Info("No installation IDs provided, auto-discovering...")
+	discoveredIds, err := ListInstallations(ctx, appId, appKeyPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to discover installations: %w", err)
+	}
+	if len(discoveredIds) == 0 {
+		return nil, fmt.Errorf("no installations found for this GitHub App")
+	}
+	logger.Info(fmt.Sprintf("Discovered %d installation(s)", len(discoveredIds)), "installation_ids", discoveredIds)
+	return discoveredIds, nil
+}
+
+// ParseInstallationIds parses a comma-separated string of installation IDs
+func ParseInstallationIds(installationIdsStr string) ([]int64, error) {
+	installationIdStrs := strings.Split(installationIdsStr, ",")
+	var installationIdList []int64
+	for _, idStr := range installationIdStrs {
+		idStr = strings.TrimSpace(idStr)
+		installID, err := strconv.ParseInt(idStr, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid installation ID '%s': %w", idStr, err)
+		}
+		installationIdList = append(installationIdList, installID)
+	}
+	return installationIdList, nil
+}
+
+// NewClientPool creates a pool of GitHub clients from installation IDs
+func NewClientPool(appId int64, installationIds []int64, appKeyPath string, logger *slog.Logger) *ClientPool {
+	var clients []ClientPair
+	for _, installID := range installationIds {
+		restClient := NewClient(appId, installID, appKeyPath)
+		gqlClient := NewGraphQLClient(appId, installID, appKeyPath)
+		clients = append(clients, ClientPair{
+			RestClient: restClient,
+			GqlClient:  gqlClient,
+			InstallID:  installID,
+		})
+	}
+	return &ClientPool{
+		clients:      clients,
+		currentIndex: 0,
+		logger:       logger,
+	}
+}
+
+// GetNextAvailableClient returns a client pair with sufficient rate limits
+// It checks both Core and GraphQL rate limits and rotates through clients if needed
+// If all clients are rate limited, it waits until the earliest reset time
+func (cp *ClientPool) GetNextAvailableClient(ctx context.Context) ClientPair {
+	if len(cp.clients) == 0 {
+		cp.logger.Error("No clients available in pool")
+		return ClientPair{}
+	}
+
+	// Check current client's rate limits
+	currentClient := cp.clients[cp.currentIndex]
+	rateLimit, _, err := currentClient.RestClient.RateLimit.Get(ctx)
+	if err != nil {
+		cp.logger.Warn("Failed to check rate limit, using current client anyway", "err", err)
+		return currentClient
+	}
+
+	if rateLimit == nil {
+		return currentClient
+	}
+
+	// Check both Core (REST) and GraphQL rate limits
+	coreRemaining := 0
+	graphqlRemaining := 0
+	var earliestResetNeeded time.Time
+	needRotation := false
+
+	if rateLimit.Core != nil {
+		coreRemaining = rateLimit.Core.Remaining
+		if coreRemaining < 100 {
+			needRotation = true
+			earliestResetNeeded = rateLimit.Core.Reset.Time
+		}
+	}
+
+	if rateLimit.GraphQL != nil {
+		graphqlRemaining = rateLimit.GraphQL.Remaining
+		if graphqlRemaining < 100 {
+			needRotation = true
+			if earliestResetNeeded.IsZero() || rateLimit.GraphQL.Reset.Before(earliestResetNeeded) {
+				earliestResetNeeded = rateLimit.GraphQL.Reset.Time
+			}
+		}
+	}
+
+	if !needRotation {
+		return currentClient
+	}
+
+	// Need to rotate - log and move to next client
+	cp.logger.Info(fmt.Sprintf("Rate limit low (Core: %d, GraphQL: %d remaining) for installation %d, rotating to next client. Reset at %v",
+		coreRemaining, graphqlRemaining, currentClient.InstallID, earliestResetNeeded))
+	cp.currentIndex = (cp.currentIndex + 1) % len(cp.clients)
+	currentClient = cp.clients[cp.currentIndex]
+
+	// Check if all clients are rate limited (either Core or GraphQL)
+	allLimited := true
+	var earliestReset time.Time
+	for i, c := range cp.clients {
+		rl, _, err := c.RestClient.RateLimit.Get(ctx)
+		if err == nil && rl != nil {
+			// Client is available if both Core and GraphQL have sufficient limits
+			coreOk := rl.Core != nil && rl.Core.Remaining >= 100
+			graphqlOk := rl.GraphQL != nil && rl.GraphQL.Remaining >= 100
+
+			if coreOk && graphqlOk {
+				allLimited = false
+				cp.currentIndex = i
+				currentClient = cp.clients[i]
+				break
+			}
+
+			// Track earliest reset time across both rate limit types
+			if rl.Core != nil && rl.Core.Remaining < 100 {
+				if earliestReset.IsZero() || rl.Core.Reset.Before(earliestReset) {
+					earliestReset = rl.Core.Reset.Time
+				}
+			}
+			if rl.GraphQL != nil && rl.GraphQL.Remaining < 100 {
+				if earliestReset.IsZero() || rl.GraphQL.Reset.Before(earliestReset) {
+					earliestReset = rl.GraphQL.Reset.Time
+				}
+			}
+		}
+	}
+
+	if allLimited {
+		waitDuration := time.Until(earliestReset) + time.Second
+		cp.logger.Warn(fmt.Sprintf("All clients rate limited (Core and/or GraphQL). Waiting until %v (%v)", earliestReset, waitDuration))
+		time.Sleep(waitDuration)
+	}
+
+	return currentClient
 }
 
 func RetrieveDiscussionAndComments(ctx context.Context, client *github.Client, gqlClient *githubv4.Client, org, repo string, number int64) (db.InsertDiscussionParams, []db.InsertDiscussionCommentParams, error) {
