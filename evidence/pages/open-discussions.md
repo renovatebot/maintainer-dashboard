@@ -464,7 +464,7 @@ from
     inner join discussions on discussions.number = dc.discussion_number
 where
     dc.rn = 1
-    and dc.author = 'github-actions'
+    and dc.author = 'github-actions[bot]'
     and (
         state = 'OPEN'
         or state = 'REOPENED'
@@ -511,7 +511,7 @@ from
     inner join discussions on discussions.number = dc.discussion_number
 where
     dc.rn = 1
-    and dc.author = 'github-actions'
+    and dc.author = 'github-actions[bot]'
     and (
         state = 'OPEN'
         or state = 'REOPENED'

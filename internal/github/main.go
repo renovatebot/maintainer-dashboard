@@ -176,7 +176,8 @@ func RetrieveDiscussionAndComments(ctx context.Context, client *github.Client, g
 						CreatedAt githubv4.DateTime
 						UpdatedAt githubv4.DateTime
 						Author    struct {
-							Login githubv4.String
+							Typename string `graphql:"__typename"`
+							Login    githubv4.String
 						}
 						Body        githubv4.String
 						UpvoteCount githubv4.Int
@@ -190,7 +191,8 @@ func RetrieveDiscussionAndComments(ctx context.Context, client *github.Client, g
 								CreatedAt githubv4.DateTime
 								UpdatedAt githubv4.DateTime
 								Author    struct {
-									Login githubv4.String
+									Typename string `graphql:"__typename"`
+									Login    githubv4.String
 								}
 								ReplyTo struct {
 									ID string
@@ -222,12 +224,17 @@ func RetrieveDiscussionAndComments(ctx context.Context, client *github.Client, g
 		}
 
 		for _, node := range discussionCommentsQuery.Repository.Discussion.Comments.Nodes {
+			author := string(node.Author.Login)
+			if node.Author.Typename == "Bot" {
+				author = author + "[bot]"
+			}
+
 			comments = append(comments, db.InsertDiscussionCommentParams{
 				DiscussionNumber: number,
 				ID:               node.ID,
 				CreatedAt:        node.CreatedAt.Format(time.RFC3339),
 				UpdatedAt:        node.UpdatedAt.Format(time.RFC3339),
-				Author:           string(node.Author.Login),
+				Author:           author,
 				// top-level comments don't have a reply
 				Body: sql.NullString{
 					String: string(node.Body),
@@ -244,12 +251,17 @@ func RetrieveDiscussionAndComments(ctx context.Context, client *github.Client, g
 			}
 
 			for _, reply := range node.Replies.Nodes {
+				author := string(reply.Author.Login)
+				if reply.Author.Typename == "Bot" {
+					author = author + "[bot]"
+				}
+
 				comments = append(comments, db.InsertDiscussionCommentParams{
 					DiscussionNumber: number,
 					ID:               reply.ID,
 					CreatedAt:        reply.CreatedAt.Format(time.RFC3339),
 					UpdatedAt:        reply.UpdatedAt.Format(time.RFC3339),
-					Author:           string(reply.Author.Login),
+					Author:           author,
 					ReplyTo: sql.NullString{
 						String: reply.ReplyTo.ID,
 						Valid:  true,
