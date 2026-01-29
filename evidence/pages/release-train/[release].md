@@ -11,7 +11,7 @@ In Renovate {params.release}.x, there were:
 
 And had the following release cadence:
 
-<BarChart data={all_release_dates} />
+<BarChart data={all_release_dates} series="release_type" />
 
 Given the conventional commit type, we also had:
 
@@ -138,6 +138,12 @@ limit
 ```sql all_release_dates
 select
     release_date as date,
+    (
+        case
+            when is_minor == 1 then 'Minor'
+            else 'Patch'
+        end
+    ) as release_type,
     COUNT(*) as num_releases
 from
     releases
@@ -145,7 +151,8 @@ where
     major_version = ${params.release}
     and tag not like '${params.release}.%-next%'
 group by
-    release_date
+    release_date,
+    release_type
 order by
     release_date asc
 ```
