@@ -1,0 +1,5 @@
+# This file was automatically generated
+name: release_trains
+type: sqlite
+options:
+  filename: release_train_stats.db
