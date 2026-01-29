@@ -2,6 +2,36 @@
 ---
 # Renovate {params.release} release train stats
 
+```sql releases_over_release_train
+-- Co-authored-by: Claude Sonnet 4.5 (GitHub Copilot)
+select
+    DENSE_RANK() OVER (
+        order by
+            release_date
+    ) - 1 as release_number,
+    (
+        case
+            when is_minor == 1 then 'Minor'
+            else 'Patch'
+        end
+    ) as release_type,
+    release_date,
+    COUNT(*) as releases_on_date
+from
+    releases
+where
+    major_version = ${params.release}
+    and tag not like '${params.release}.%-next%'
+group by
+    release_date,
+    is_minor
+order by
+    release_date,
+    release_type;
+```
+
+<BarChart data={releases_over_release_train} series="release_type" title="# of releases over each day of the release train" />
+
 In Renovate {params.release}.x, there were:
 
 - <Value data={num_commits} /> commits
