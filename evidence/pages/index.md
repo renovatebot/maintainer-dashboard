@@ -48,6 +48,75 @@ group by
 
 <BarChart data={states} title={inputs.category_name.value} />
 
+## Open/close
+
+```sql closed_age
+select
+    'Open' as series,
+    month,
+    count(1) as num
+from
+    (
+        select
+            category_name,
+            date_trunc('month', discussions.created_at) as month,
+            count(1)
+        from
+            discussions
+        where
+            (
+                state = 'OPEN'
+                or state = 'REOPENED'
+            )
+            and category_name = '${inputs.category_name.value}'
+        group by
+            category_name,
+            discussions.created_at
+        order by
+            discussions.created_at asc
+    )
+group by
+    month
+union
+select
+    'Closed' as series,
+    month,
+    count(1) as num
+from
+    (
+        select
+            category_name,
+            date_trunc('month', discussions.created_at) as month,
+            count(1)
+        from
+            discussions
+        where
+            (
+                state != 'OPEN'
+                and state != 'REOPENED'
+            )
+            and category_name = '${inputs.category_name.value}'
+        group by
+            category_name,
+            discussions.created_at
+        order by
+            discussions.created_at asc
+    )
+group by
+    month
+```
+
+
+<BarChart
+data={closed_age}
+series=series
+x=month
+y=num
+title="Open/closed stats for Discussions, by creation date"
+/>
+
+##
+
 ```sql category_open_close_over_time
 select
     'Opened' as series,
