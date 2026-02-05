@@ -50,6 +50,71 @@ group by
 
 ## Open/close
 
+```sql closed_age_pct
+-- co-authored-by: GPT-4.1
+select
+    closed_percent,
+    month
+from
+    (
+        select
+            month,
+            sum(
+                case
+                    when state in ('OPEN', 'REOPENED') then 1
+                    else 0
+                end
+            ) as open_count,
+            sum(
+                case
+                    when state not in ('OPEN', 'REOPENED') then 1
+                    else 0
+                end
+            ) as closed_count,
+            round(
+                100.0 * sum(
+                    case
+                        when state in ('OPEN', 'REOPENED') then 1
+                        else 0
+                    end
+                ) / count(1),
+                2
+            ) as open_percent,
+            round(
+                100.0 * sum(
+                    case
+                        when state not in ('OPEN', 'REOPENED') then 1
+                        else 0
+                    end
+                ) / count(1),
+                2
+            ) as closed_percent
+        from
+            (
+                select
+                    category_name,
+                    date_trunc('month', discussions.created_at) as month,
+                    state
+                from
+                    discussions
+                where
+                    category_name = '${inputs.category_name.value}'
+            ) as sub
+        group by
+            month
+        order by
+            month asc
+    )
+```
+
+<BarChart
+  data={closed_age_pct}
+  x=month
+  y=closed_percent
+  title="% closed per month"
+  yMax=100
+/>
+
 ```sql closed_age
 select
     'Open' as series,
