@@ -4,7 +4,7 @@ create table if not exists discussions (
     url text not null,
     state text check(
         state in (
-            -- a custom **??**
+            -- a custom value to denote a currently open Discussion, as 'OPEN' is the implied state
             'OPEN',
             -- GraphQL entries for DiscussionStateReason
             'RESOLVED',
@@ -14,9 +14,8 @@ create table if not exists discussions (
         )
     ) not null,
     created_at text not null,
-    -- updated_at is the **??**j
-    -- Discussion.updatedAt
-    -- indicates the **??**, including comments, but doesn't include a comment being edited
+    -- updated_at stores the GitHub Discussion.updatedAt value
+    -- indicates the last time the Discussion was updated, including comments, but doesn't include a comment being edited
     updated_at text not null,
     closed_at text,
     author text not null,
@@ -34,7 +33,7 @@ create table if not exists discussion_comments (
     created_at text not null,
     updated_at text not null,
     author text not null,
-    -- NOTE **??**
+    -- NOTE: NULL for top-level comments (not replies)
     reply_to text
 );
 

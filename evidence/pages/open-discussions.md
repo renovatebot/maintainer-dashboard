@@ -440,7 +440,7 @@ select
             from
                 json_each(labels)
             where
-                -- NOTE **??**
+                -- NOTE: json_each returns raw JSON values, so string entries include surrounding quotes
                 value like '"auto:%'
         )
     ) as series,
