@@ -60,7 +60,7 @@ func main() {
 
 	discussionNumbers, err := queries.FindKnownDiscussions(ctx)
 	if err != nil {
-		logger.Error(fmt.Sprintf("Failed to **??**: %v", err), "err", err)
+		logger.Error(fmt.Sprintf("Failed to find known discussions: %v", err), "err", err)
 		os.Exit(1)
 	}
 
@@ -91,14 +91,14 @@ func main() {
 		d, comments, err := github.RetrieveDiscussionAndComments(ctx, client.RestClient, client.GqlClient, "renovatebot", "renovate", discussion)
 		if err != nil {
 			updateExistingDiscussionsTracker.IncrementWithError(1)
-			logger.Error(fmt.Sprintf("Failed to query **??**: %v", err), "err", err)
+			logger.Error(fmt.Sprintf("Failed to retrieve discussion and comments for #%d: %v", discussion, err), "err", err)
 			continue
 		}
 
 		err = queries.InsertDiscussion(ctx, d)
 		if err != nil {
 			updateExistingDiscussionsTracker.IncrementWithError(1)
-			logger.Error(fmt.Sprintf("Failed to query **??**: %v", err), "err", err)
+			logger.Error(fmt.Sprintf("Failed to insert discussion #%d: %v", discussion, err), "err", err)
 			continue
 		}
 
@@ -106,7 +106,7 @@ func main() {
 			err = queries.InsertDiscussionComment(ctx, comment)
 			if err != nil {
 				updateExistingDiscussionsTracker.IncrementWithError(1)
-				logger.Error(fmt.Sprintf("Failed to query **??**: %v", err), "err", err)
+				logger.Error(fmt.Sprintf("Failed to insert comment for discussion #%d: %v", discussion, err), "err", err)
 				continue
 			}
 		}

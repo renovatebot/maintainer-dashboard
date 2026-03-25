@@ -65,13 +65,13 @@ func main() {
 	if errors.Is(err, sql.ErrNoRows) {
 		lastDBUpdateVal = "1970-01-01T00:00:00Z"
 	} else if err != nil {
-		logger.Error(fmt.Sprintf("Failed to query **??**: %v", err), "err", err)
+		logger.Error(fmt.Sprintf("Failed to find most recently updated discussion in database: %v", err), "err", err)
 		os.Exit(1)
 	}
 
 	lastDBUpdate, err := time.Parse(time.RFC3339, lastDBUpdateVal)
 	if err != nil {
-		logger.Error(fmt.Sprintf("Failed to query **??**: %v", err), "err", err)
+		logger.Error(fmt.Sprintf("Failed to parse last updated timestamp from database: %v", err), "err", err)
 		os.Exit(1)
 	}
 
@@ -79,12 +79,12 @@ func main() {
 	clientPair := clientPool.GetNextAvailableClient(ctx)
 	lastUpdate, err := github.GetMostRecentlyUpdatedDiscussion(ctx, clientPair.RestClient, clientPair.GqlClient, "renovatebot", "renovate")
 	if err != nil {
-		logger.Error(fmt.Sprintf("Failed to query **??**: %v", err), "err", err)
+		logger.Error(fmt.Sprintf("Failed to get most recently updated discussion from GitHub: %v", err), "err", err)
 		os.Exit(1)
 	}
 
 	if lastDBUpdate.Equal(lastUpdate) || lastDBUpdate.After(lastUpdate) {
-		logger.Info("**??**, but up-to-date", "lastUpdateOnGitHub", lastUpdate, "lastUpdateInDatabase", lastDBUpdate)
+		logger.Info("No new discussions to sync, database is up-to-date", "lastUpdateOnGitHub", lastUpdate, "lastUpdateInDatabase", lastDBUpdate)
 	} else {
 		finished := false
 
@@ -127,14 +127,14 @@ func main() {
 				d, comments, err := github.RetrieveDiscussionAndComments(ctx, clientPair.RestClient, clientPair.GqlClient, "renovatebot", "renovate", discussion.Number)
 				if err != nil {
 					updateExistingDiscussionsTracker.IncrementWithError(1)
-					logger.Error(fmt.Sprintf("Failed to query **??**: %v", err), "err", err)
+					logger.Error(fmt.Sprintf("Failed to retrieve discussion and comments for #%d: %v", discussion.Number, err), "err", err)
 					continue
 				}
 
 				err = queries.InsertDiscussion(ctx, d)
 				if err != nil {
 					updateExistingDiscussionsTracker.IncrementWithError(1)
-					logger.Error(fmt.Sprintf("Failed to query **??**: %v", err), "err", err)
+					logger.Error(fmt.Sprintf("Failed to insert discussion #%d: %v", discussion.Number, err), "err", err)
 					continue
 				}
 
@@ -142,7 +142,7 @@ func main() {
 					err = queries.InsertDiscussionComment(ctx, comment)
 					if err != nil {
 						updateExistingDiscussionsTracker.IncrementWithError(1)
-						logger.Error(fmt.Sprintf("Failed to query **??**: %v", err), "err", err)
+						logger.Error(fmt.Sprintf("Failed to insert comment for discussion #%d: %v", discussion.Number, err), "err", err)
 						continue
 					}
 				}

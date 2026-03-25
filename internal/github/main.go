@@ -507,7 +507,7 @@ func GetMostRecentlyUpdatedDiscussion(ctx context.Context, client *github.Client
 
 	err := gqlClient.Query(ctx, &q, variables)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("failed to **??**: %w", err)
+		return time.Time{}, fmt.Errorf("failed to query most recently updated discussion for %v/%v: %w", org, repo, err)
 	}
 
 	if len(q.Repository.Discussions.Edges) == 0 {
@@ -550,7 +550,7 @@ func ListMostRecentlyUpdatedDiscussions(ctx context.Context, client *github.Clie
 
 	err := gqlClient.Query(ctx, &q, variables)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to **??**: %w", err)
+		return nil, nil, fmt.Errorf("failed to list most recently updated discussions for %v/%v: %w", org, repo, err)
 	}
 	for _, edge := range q.Repository.Discussions.Edges {
 		results = append(results, MostRecentlyUpdatedDiscussion{
