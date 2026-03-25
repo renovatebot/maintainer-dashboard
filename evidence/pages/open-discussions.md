@@ -238,9 +238,9 @@ title="Closed Discussions, by creation date"
 ```sql open_no_comments
 select
     number,
-    ANY_VALUE(title),
-    ANY_VALUE(url),
-    ANY_VALUE(discussions.created_at),
+    ANY_VALUE(title) as title,
+    ANY_VALUE(url) as url,
+    ANY_VALUE(discussions.created_at) as created_at,
     ANY_VALUE(discussions.updated_at)
 from
     discussions
