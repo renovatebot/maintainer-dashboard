@@ -69,3 +69,34 @@ alter table
     discussions
 add
     column answer_chosen_by text;
+
+create table if not exists issues (
+    number integer primary key,
+    title text not null,
+    url text not null,
+    state text check(state in ('OPEN', 'CLOSED')) not null,
+    -- GraphQL entries for IssueStateReason: COMPLETED, NOT_PLANNED, REOPENED, or null
+    state_reason text,
+    created_at text not null,
+    -- updated_at stores the GitHub Issue.updatedAt value
+    -- as with discussions, this does not bump when an existing comment is edited
+    updated_at text not null,
+    closed_at text,
+    author text not null,
+    -- a JSON array of label names
+    labels json,
+    body text,
+    locked integer not null default 0 check(locked in (0, 1)),
+    -- a JSON object keyed by reaction content (e.g. {"THUMBS_UP": 5, "HEART": 2})
+    reactions json
+);
+
+create table if not exists issue_comments (
+    -- TODO foreign key
+    issue_number integer not null,
+    id text primary key,
+    created_at text not null,
+    updated_at text not null,
+    author text not null,
+    body text
+);
