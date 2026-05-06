@@ -20,7 +20,7 @@ func main() {
 	appId := flag.Int64("app-id", -1, "The App ID of the GitHub App to authenticate as")
 	installationIds := flag.String("installation-ids", "", "Comma-separated list of installation IDs to rotate through based on rate limits (auto-discovers if not provided)")
 	appKeyPath := flag.String("app-key", "", "Path to the GitHub App Private Key")
-	fromNumber := flag.Int64("from", 0, "Only process discussions from this number onwards (inclusive)")
+	fromNumber := flag.Int64("from", 0, "Only process discussions/issues from this number onwards (inclusive)")
 
 	flag.Parse()
 
@@ -114,4 +114,59 @@ func main() {
 		updateExistingDiscussionsTracker.Increment(1)
 	}
 	updateExistingDiscussionsTracker.MarkAsDone()
+
+	issueNumbers, err := queries.FindKnownIssues(ctx)
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to find known issues: %v", err), "err", err)
+		os.Exit(1)
+	}
+
+	updateExistingIssuesTracker := progress.Tracker{
+		Message: "Backfilling updates to existing Issues (and comments)",
+		Total:   int64(len(issueNumbers)),
+	}
+	pw.AppendTracker(&updateExistingIssuesTracker)
+
+	if fromNumber != nil && *fromNumber > 0 {
+		var filtered []int64
+		for _, num := range issueNumbers {
+			if num >= *fromNumber {
+				filtered = append(filtered, num)
+			} else {
+				updateExistingIssuesTracker.Increment(1)
+			}
+		}
+		issueNumbers = filtered
+		logger.Info(fmt.Sprintf("Filtered to %d issues from #%d onwards", len(issueNumbers), *fromNumber))
+	}
+
+	for _, issue := range issueNumbers {
+		client := clientPool.GetNextAvailableClient(ctx)
+
+		i, comments, err := github.RetrieveIssueAndComments(ctx, client.RestClient, client.GqlClient, "renovatebot", "renovate", issue)
+		if err != nil {
+			updateExistingIssuesTracker.IncrementWithError(1)
+			logger.Error(fmt.Sprintf("Failed to retrieve issue and comments for #%d: %v", issue, err), "err", err)
+			continue
+		}
+
+		err = queries.InsertIssue(ctx, i)
+		if err != nil {
+			updateExistingIssuesTracker.IncrementWithError(1)
+			logger.Error(fmt.Sprintf("Failed to insert issue #%d: %v", issue, err), "err", err)
+			continue
+		}
+
+		for _, comment := range comments {
+			err = queries.InsertIssueComment(ctx, comment)
+			if err != nil {
+				updateExistingIssuesTracker.IncrementWithError(1)
+				logger.Error(fmt.Sprintf("Failed to insert comment for issue #%d: %v", issue, err), "err", err)
+				continue
+			}
+		}
+
+		updateExistingIssuesTracker.Increment(1)
+	}
+	updateExistingIssuesTracker.MarkAsDone()
 }
