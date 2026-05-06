@@ -152,4 +152,92 @@ func main() {
 		}
 		updateExistingDiscussionsTracker.MarkAsDone()
 	}
+
+	lastDBIssueUpdateVal, err := queries.FindMostRecentlyUpdatedIssue(ctx)
+	if errors.Is(err, sql.ErrNoRows) {
+		lastDBIssueUpdateVal = "1970-01-01T00:00:00Z"
+	} else if err != nil {
+		logger.Error(fmt.Sprintf("Failed to find most recently updated issue in database: %v", err), "err", err)
+		os.Exit(1)
+	}
+
+	lastDBIssueUpdate, err := time.Parse(time.RFC3339, lastDBIssueUpdateVal)
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to parse last updated issue timestamp from database: %v", err), "err", err)
+		os.Exit(1)
+	}
+
+	clientPair = clientPool.GetNextAvailableClient(ctx)
+	lastIssueUpdate, err := github.GetMostRecentlyUpdatedIssue(ctx, clientPair.RestClient, clientPair.GqlClient, "renovatebot", "renovate")
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to get most recently updated issue from GitHub: %v", err), "err", err)
+		os.Exit(1)
+	}
+
+	if lastDBIssueUpdate.Equal(lastIssueUpdate) || lastDBIssueUpdate.After(lastIssueUpdate) {
+		logger.Info("No new issues to sync, database is up-to-date", "lastUpdateOnGitHub", lastIssueUpdate, "lastUpdateInDatabase", lastDBIssueUpdate)
+	} else {
+		finished := false
+
+		updateExistingIssuesTracker := progress.Tracker{
+			Message: "Updating existing Issues (and comments)",
+		}
+		pw.AppendTracker(&updateExistingIssuesTracker)
+
+		var nextIssueCursor *githubv4.String
+		for !finished {
+			clientPair := clientPool.GetNextAvailableClient(ctx)
+
+			var issues []github.MostRecentlyUpdatedIssue
+			issues, nextIssueCursor, err = github.ListMostRecentlyUpdatedIssues(ctx, clientPair.RestClient, clientPair.GqlClient, "renovatebot", "renovate", 10, nextIssueCursor)
+			if err != nil {
+				logger.Error(fmt.Sprintf("Failed to query issue numbers: %v", err), "err", err)
+				break
+			}
+
+			if issues == nil {
+				finished = true
+				continue
+			}
+
+			if nextIssueCursor == nil {
+				finished = true
+				continue
+			}
+
+			for _, issue := range issues {
+				if issue.UpdatedAt.Before(lastDBIssueUpdate) {
+					finished = true
+					break
+				}
+
+				clientPair = clientPool.GetNextAvailableClient(ctx)
+				i, comments, err := github.RetrieveIssueAndComments(ctx, clientPair.RestClient, clientPair.GqlClient, "renovatebot", "renovate", issue.Number)
+				if err != nil {
+					updateExistingIssuesTracker.IncrementWithError(1)
+					logger.Error(fmt.Sprintf("Failed to retrieve issue and comments for #%d: %v", issue.Number, err), "err", err)
+					continue
+				}
+
+				err = queries.InsertIssue(ctx, i)
+				if err != nil {
+					updateExistingIssuesTracker.IncrementWithError(1)
+					logger.Error(fmt.Sprintf("Failed to insert issue #%d: %v", issue.Number, err), "err", err)
+					continue
+				}
+
+				for _, comment := range comments {
+					err = queries.InsertIssueComment(ctx, comment)
+					if err != nil {
+						updateExistingIssuesTracker.IncrementWithError(1)
+						logger.Error(fmt.Sprintf("Failed to insert comment for issue #%d: %v", issue.Number, err), "err", err)
+						continue
+					}
+				}
+
+				updateExistingIssuesTracker.Increment(1)
+			}
+		}
+		updateExistingIssuesTracker.MarkAsDone()
+	}
 }
