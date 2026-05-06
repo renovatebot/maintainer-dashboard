@@ -43,12 +43,12 @@ func (rt *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		if err != nil {
 			return nil, err
 		}
-		if resp.StatusCode != http.StatusGatewayTimeout || attempt == rt.maxRetry {
+		if (resp.StatusCode != http.StatusBadGateway && resp.StatusCode != http.StatusGatewayTimeout) || attempt == rt.maxRetry {
 			return resp, nil
 		}
 		resp.Body.Close()
 		backoff := time.Duration(1<<attempt) * time.Second
-		slog.Warn("GitHub API returned 504, retrying", "attempt", attempt+1, "backoff", backoff)
+		slog.Warn("GitHub API returned retryable error, retrying", "status", resp.StatusCode, "attempt", attempt+1, "backoff", backoff)
 		time.Sleep(backoff)
 	}
 	// unreachable
