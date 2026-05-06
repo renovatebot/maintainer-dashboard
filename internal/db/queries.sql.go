@@ -42,6 +42,36 @@ func (q *Queries) FindKnownDiscussions(ctx context.Context) ([]int64, error) {
 	return items, nil
 }
 
+const findKnownIssues = `-- name: FindKnownIssues :many
+select
+    number
+from
+    issues
+`
+
+func (q *Queries) FindKnownIssues(ctx context.Context) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, findKnownIssues)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var number int64
+		if err := rows.Scan(&number); err != nil {
+			return nil, err
+		}
+		items = append(items, number)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const findMostRecentlyUpdatedDiscussion = `-- name: FindMostRecentlyUpdatedDiscussion :one
 select
     updated_at
@@ -53,6 +83,24 @@ limit
 
 func (q *Queries) FindMostRecentlyUpdatedDiscussion(ctx context.Context) (string, error) {
 	row := q.db.QueryRowContext(ctx, findMostRecentlyUpdatedDiscussion)
+	var updated_at string
+	err := row.Scan(&updated_at)
+	return updated_at, err
+}
+
+const findMostRecentlyUpdatedIssue = `-- name: FindMostRecentlyUpdatedIssue :one
+select
+    updated_at
+from
+    issues
+order by
+    updated_at desc
+limit
+    1
+`
+
+func (q *Queries) FindMostRecentlyUpdatedIssue(ctx context.Context) (string, error) {
+	row := q.db.QueryRowContext(ctx, findMostRecentlyUpdatedIssue)
 	var updated_at string
 	err := row.Scan(&updated_at)
 	return updated_at, err
@@ -230,6 +278,118 @@ func (q *Queries) InsertDiscussionComment(ctx context.Context, arg InsertDiscuss
 		arg.ReplyTo,
 		arg.Body,
 		arg.UpvoteCount,
+	)
+	return err
+}
+
+const insertIssue = `-- name: InsertIssue :exec
+insert into
+    issues (
+        number,
+        title,
+        url,
+        state,
+        state_reason,
+        created_at,
+        updated_at,
+        closed_at,
+        author,
+        labels,
+        body,
+        locked,
+        reactions
+    )
+values
+    (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) on conflict(number) do
+update
+set
+    title = excluded.title,
+    url = excluded.url,
+    state = excluded.state,
+    state_reason = excluded.state_reason,
+    created_at = excluded.created_at,
+    updated_at = excluded.updated_at,
+    closed_at = excluded.closed_at,
+    author = excluded.author,
+    labels = excluded.labels,
+    body = excluded.body,
+    locked = excluded.locked,
+    reactions = excluded.reactions
+`
+
+type InsertIssueParams struct {
+	Number      int64
+	Title       string
+	Url         string
+	State       string
+	StateReason sql.NullString
+	CreatedAt   string
+	UpdatedAt   string
+	ClosedAt    sql.NullString
+	Author      string
+	Labels      json.RawMessage
+	Body        sql.NullString
+	Locked      int64
+	Reactions   json.RawMessage
+}
+
+func (q *Queries) InsertIssue(ctx context.Context, arg InsertIssueParams) error {
+	_, err := q.db.ExecContext(ctx, insertIssue,
+		arg.Number,
+		arg.Title,
+		arg.Url,
+		arg.State,
+		arg.StateReason,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+		arg.ClosedAt,
+		arg.Author,
+		arg.Labels,
+		arg.Body,
+		arg.Locked,
+		arg.Reactions,
+	)
+	return err
+}
+
+const insertIssueComment = `-- name: InsertIssueComment :exec
+insert into
+    issue_comments (
+        issue_number,
+        id,
+        created_at,
+        updated_at,
+        author,
+        body
+    )
+values
+    (?, ?, ?, ?, ?, ?) on conflict(id) do
+update
+set
+    id = excluded.id,
+    created_at = excluded.created_at,
+    updated_at = excluded.updated_at,
+    author = excluded.author,
+    body = excluded.body
+`
+
+type InsertIssueCommentParams struct {
+	IssueNumber int64
+	ID          string
+	CreatedAt   string
+	UpdatedAt   string
+	Author      string
+	Body        sql.NullString
+}
+
+func (q *Queries) InsertIssueComment(ctx context.Context, arg InsertIssueCommentParams) error {
+	_, err := q.db.ExecContext(ctx, insertIssueComment,
+		arg.IssueNumber,
+		arg.ID,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+		arg.Author,
+		arg.Body,
 	)
 	return err
 }
