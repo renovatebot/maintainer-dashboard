@@ -2,5 +2,14 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "local>renovatebot/.github:renovate-config"
+  ],
+  "packageRules": [
+    {
+      "description": "Group evidence.dev packages - TODO renovate#42646",
+      "matchDepNames": [
+        "@evidence-dev/*"
+      ],
+      "groupName": "evidence.dev packages"
+    }
   ]
 }
