@@ -34,7 +34,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	err = db.ApplySchema(sqlDB)
+	_, err = sqlDB.Query(db.CreateTablesQuery)
 	if err != nil {
 		logger.Error(fmt.Sprintf("Failed to initialise/migrate database: %v", err), "err", err)
 		os.Exit(1)
