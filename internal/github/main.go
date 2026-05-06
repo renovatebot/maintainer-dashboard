@@ -561,3 +561,263 @@ func ListMostRecentlyUpdatedDiscussions(ctx context.Context, client *github.Clie
 
 	return results, &q.Repository.Discussions.PageInfo.EndCursor, nil
 }
+
+func GetMostRecentlyUpdatedIssue(ctx context.Context, client *github.Client, gqlClient *githubv4.Client, org, repo string) (time.Time, error) {
+	var q struct {
+		Repository struct {
+			Issues struct {
+				Edges []struct {
+					Node struct {
+						Number    int64
+						UpdatedAt githubv4.DateTime
+					}
+				}
+			} `graphql:"issues(first: 1, orderBy:{field:UPDATED_AT, direction:DESC})"`
+		} `graphql:"repository(owner: $owner, name: $name)"`
+	}
+	variables := map[string]any{
+		"owner": githubv4.String(org),
+		"name":  githubv4.String(repo),
+	}
+
+	err := gqlClient.Query(ctx, &q, variables)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to query most recently updated issue for %v/%v: %w", org, repo, err)
+	}
+
+	if len(q.Repository.Issues.Edges) == 0 {
+		return time.Time{}, nil
+	}
+
+	return q.Repository.Issues.Edges[0].Node.UpdatedAt.Time, nil
+}
+
+type MostRecentlyUpdatedIssue struct {
+	Number    int64
+	UpdatedAt time.Time
+}
+
+func ListMostRecentlyUpdatedIssues(ctx context.Context, client *github.Client, gqlClient *githubv4.Client, org, repo string, mostRecent int, cursor *githubv4.String) ([]MostRecentlyUpdatedIssue, *githubv4.String, error) {
+	var q struct {
+		Repository struct {
+			Issues struct {
+				PageInfo struct {
+					EndCursor   githubv4.String
+					HasNextPage githubv4.Boolean
+				}
+				Edges []struct {
+					Node struct {
+						Number    int64
+						UpdatedAt githubv4.DateTime
+					}
+				}
+			} `graphql:"issues(first: $mostRecent, orderBy:{field:UPDATED_AT, direction:DESC}, after: $cursor)"`
+		} `graphql:"repository(owner: $owner, name: $name)"`
+	}
+	variables := map[string]any{
+		"owner":      githubv4.String(org),
+		"name":       githubv4.String(repo),
+		"mostRecent": githubv4.Int(mostRecent),
+		"cursor":     cursor,
+	}
+
+	var results []MostRecentlyUpdatedIssue
+
+	err := gqlClient.Query(ctx, &q, variables)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to list most recently updated issues for %v/%v: %w", org, repo, err)
+	}
+	for _, edge := range q.Repository.Issues.Edges {
+		results = append(results, MostRecentlyUpdatedIssue{
+			Number:    edge.Node.Number,
+			UpdatedAt: edge.Node.UpdatedAt.Time,
+		})
+	}
+
+	return results, &q.Repository.Issues.PageInfo.EndCursor, nil
+}
+
+func RetrieveIssueAndComments(ctx context.Context, client *github.Client, gqlClient *githubv4.Client, org, repo string, number int64) (db.InsertIssueParams, []db.InsertIssueCommentParams, error) {
+	var issueQuery struct {
+		Repository struct {
+			Issue struct {
+				Title       githubv4.String
+				URL         githubv4.URI
+				State       githubv4.String
+				StateReason *githubv4.String
+				CreatedAt   githubv4.DateTime
+				UpdatedAt   githubv4.DateTime
+				ClosedAt    *githubv4.DateTime
+				Author      *struct {
+					Typename string `graphql:"__typename"`
+					Login    githubv4.String
+				}
+				Labels struct {
+					Edges []struct {
+						Node struct {
+							Name githubv4.String
+						}
+					}
+				} `graphql:"labels(first:100)"`
+				Body           githubv4.String
+				Locked         githubv4.Boolean
+				ReactionGroups []struct {
+					Content  githubv4.String
+					Reactors struct {
+						TotalCount githubv4.Int
+					}
+				}
+			} `graphql:"issue(number: $number)"`
+		} `graphql:"repository(owner: $owner, name: $name)"`
+	}
+
+	variables := map[string]any{
+		"owner":  githubv4.String(org),
+		"name":   githubv4.String(repo),
+		"number": githubv4.Int(number),
+	}
+
+	err := gqlClient.Query(ctx, &issueQuery, variables)
+	if err != nil {
+		return db.InsertIssueParams{}, nil, fmt.Errorf("failed to query %v/%v Issue %v: %w", org, repo, number, err)
+	}
+
+	author := ""
+	if issueQuery.Repository.Issue.Author != nil {
+		author = string(issueQuery.Repository.Issue.Author.Login)
+		if issueQuery.Repository.Issue.Author.Typename == "Bot" {
+			author = author + "[bot]"
+		}
+	}
+
+	locked := int64(0)
+	if bool(issueQuery.Repository.Issue.Locked) {
+		locked = 1
+	}
+
+	issue := db.InsertIssueParams{
+		Number:    number,
+		Title:     string(issueQuery.Repository.Issue.Title),
+		Url:       issueQuery.Repository.Issue.URL.String(),
+		State:     string(issueQuery.Repository.Issue.State),
+		CreatedAt: issueQuery.Repository.Issue.CreatedAt.Format(time.RFC3339),
+		UpdatedAt: issueQuery.Repository.Issue.UpdatedAt.Format(time.RFC3339),
+		Author:    author,
+		Labels:    []byte("[]"),
+		Body: sql.NullString{
+			String: string(issueQuery.Repository.Issue.Body),
+			Valid:  true,
+		},
+		Locked:    locked,
+		Reactions: []byte("{}"),
+	}
+
+	if issueQuery.Repository.Issue.StateReason != nil {
+		issue.StateReason = sql.NullString{
+			String: string(*issueQuery.Repository.Issue.StateReason),
+			Valid:  true,
+		}
+	}
+
+	if issueQuery.Repository.Issue.ClosedAt != nil {
+		issue.ClosedAt = sql.NullString{
+			String: issueQuery.Repository.Issue.ClosedAt.Format(time.RFC3339),
+			Valid:  true,
+		}
+	}
+
+	var labels []string
+	for _, edge := range issueQuery.Repository.Issue.Labels.Edges {
+		labels = append(labels, string(edge.Node.Name))
+	}
+
+	if len(labels) > 0 {
+		issue.Labels, err = json.Marshal(labels)
+		if err != nil {
+			return db.InsertIssueParams{}, nil, fmt.Errorf("failed to marshal labels: %w", err)
+		}
+	}
+
+	reactions := map[string]int64{}
+	for _, group := range issueQuery.Repository.Issue.ReactionGroups {
+		count := int64(group.Reactors.TotalCount)
+		if count == 0 {
+			continue
+		}
+		reactions[string(group.Content)] = count
+	}
+	if len(reactions) > 0 {
+		issue.Reactions, err = json.Marshal(reactions)
+		if err != nil {
+			return db.InsertIssueParams{}, nil, fmt.Errorf("failed to marshal reactions: %w", err)
+		}
+	}
+
+	var issueCommentsQuery struct {
+		Repository struct {
+			Issue struct {
+				Comments struct {
+					PageInfo struct {
+						HasNextPage githubv4.Boolean
+						EndCursor   githubv4.String
+					}
+					Nodes []struct {
+						ID        string
+						CreatedAt githubv4.DateTime
+						UpdatedAt githubv4.DateTime
+						Author    *struct {
+							Typename string `graphql:"__typename"`
+							Login    githubv4.String
+						}
+						Body githubv4.String
+					}
+				} `graphql:"comments(first: 100, after: $cursor)"`
+			} `graphql:"issue(number: $number)"`
+		} `graphql:"repository(owner: $owner, name: $name)"`
+	}
+
+	var comments []db.InsertIssueCommentParams
+
+	variables = map[string]any{
+		"owner":  githubv4.String(org),
+		"name":   githubv4.String(repo),
+		"number": githubv4.Int(number),
+		"cursor": (*githubv4.String)(nil),
+	}
+
+	for {
+		err := gqlClient.Query(ctx, &issueCommentsQuery, variables)
+		if err != nil {
+			return db.InsertIssueParams{}, nil, fmt.Errorf("failed to query issue comments: %w", err)
+		}
+
+		for _, node := range issueCommentsQuery.Repository.Issue.Comments.Nodes {
+			commentAuthor := ""
+			if node.Author != nil {
+				commentAuthor = string(node.Author.Login)
+				if node.Author.Typename == "Bot" {
+					commentAuthor = commentAuthor + "[bot]"
+				}
+			}
+
+			comments = append(comments, db.InsertIssueCommentParams{
+				IssueNumber: number,
+				ID:          node.ID,
+				CreatedAt:   node.CreatedAt.Format(time.RFC3339),
+				UpdatedAt:   node.UpdatedAt.Format(time.RFC3339),
+				Author:      commentAuthor,
+				Body: sql.NullString{
+					String: string(node.Body),
+					Valid:  true,
+				},
+			})
+		}
+
+		if !issueCommentsQuery.Repository.Issue.Comments.PageInfo.HasNextPage {
+			break
+		}
+		variables["cursor"] = githubv4.NewString(issueCommentsQuery.Repository.Issue.Comments.PageInfo.EndCursor)
+	}
+
+	return issue, comments, nil
+}
