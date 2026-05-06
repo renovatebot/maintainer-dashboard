@@ -32,6 +32,33 @@ type ClientPool struct {
 	logger       *slog.Logger
 }
 
+type retryTransport struct {
+	wrapped  http.RoundTripper
+	maxRetry int
+}
+
+func (rt *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	for attempt := 0; attempt <= rt.maxRetry; attempt++ {
+		resp, err := rt.wrapped.RoundTrip(req)
+		if err != nil {
+			return nil, err
+		}
+		if resp.StatusCode != http.StatusGatewayTimeout || attempt == rt.maxRetry {
+			return resp, nil
+		}
+		resp.Body.Close()
+		backoff := time.Duration(1<<attempt) * time.Second
+		slog.Warn("GitHub API returned 504, retrying", "attempt", attempt+1, "backoff", backoff)
+		time.Sleep(backoff)
+	}
+	// unreachable
+	return nil, fmt.Errorf("unexpected retry loop exit")
+}
+
+func newRetryHTTPClient(itr http.RoundTripper) *http.Client {
+	return &http.Client{Transport: &retryTransport{wrapped: itr, maxRetry: 3}}
+}
+
 func NewClient(appId, installationId int64, appKeyPath string) *github.Client {
 	// Shared transport to reuse TCP connections.
 	tr := http.DefaultTransport
@@ -44,7 +71,7 @@ func NewClient(appId, installationId int64, appKeyPath string) *github.Client {
 	}
 
 	// Use installation transport with github.com/google/go-github
-	return github.NewClient(&http.Client{Transport: itr})
+	return github.NewClient(newRetryHTTPClient(itr))
 }
 
 func NewGraphQLClient(appId, installationId int64, appKeyPath string) *githubv4.Client {
@@ -58,7 +85,7 @@ func NewGraphQLClient(appId, installationId int64, appKeyPath string) *githubv4.
 		log.Fatal(err)
 	}
 
-	return githubv4.NewClient(&http.Client{Transport: itr})
+	return githubv4.NewClient(newRetryHTTPClient(itr))
 }
 
 // ListInstallations retrieves all installations for a GitHub App
