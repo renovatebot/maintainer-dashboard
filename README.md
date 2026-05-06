@@ -1,8 +1,8 @@
 # Renovate maintainer dashboard
 
-A set of tooling to produce a local-first view of the [Renovate](https://docs.renovatebot.com/) project's Discussions.
+A set of tooling to produce a local-first view of the [Renovate](https://docs.renovatebot.com/) project's Discussions and Issues.
 
-As Renovate [uses GitHub Discussions for triage process](https://www.jvt.me/posts/2026/01/07/renovate-why-discussions/), this provides [a better view of the GitHub Discussions interface](https://www.jvt.me/posts/2026/02/20/renovate-discussions-data/).
+As Renovate [uses GitHub Discussions for triage process](https://www.jvt.me/posts/2026/01/07/renovate-why-discussions/), this provides [a better view of the GitHub Discussions interface](https://www.jvt.me/posts/2026/02/20/renovate-discussions-data/). GitHub Issues are also synced to provide a complete view of project activity.
 
 If present, this also includes the [release train stats](https://github.com/renovatebot/release-train-stats) for the Renovate project.
 
@@ -10,7 +10,7 @@ If present, this also includes the [release train stats](https://github.com/reno
 
 ### SQLite database
 
-As its heart, this project produces an SQLite database that provides access to all the data that exists in GitHub Discussions.
+As its heart, this project produces an SQLite database that provides access to all the data that exists in GitHub Discussions and GitHub Issues.
 
 This can then be presented and/or searched in ways independent to the GitHub Web UI and APIs, and provides a fully offline interaction model after-the-fact.
 
