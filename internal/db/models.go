@@ -45,3 +45,28 @@ type DiscussionComment struct {
 	Body             sql.NullString
 	UpvoteCount      sql.NullInt64
 }
+
+type Issue struct {
+	Number      int64
+	Title       string
+	Url         string
+	State       string
+	StateReason sql.NullString
+	CreatedAt   string
+	UpdatedAt   string
+	ClosedAt    sql.NullString
+	Author      string
+	Labels      json.RawMessage
+	Body        sql.NullString
+	Locked      int64
+	Reactions   json.RawMessage
+}
+
+type IssueComment struct {
+	IssueNumber int64
+	ID          string
+	CreatedAt   string
+	UpdatedAt   string
+	Author      string
+	Body        sql.NullString
+}

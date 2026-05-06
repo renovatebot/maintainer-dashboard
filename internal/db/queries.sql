@@ -82,3 +82,73 @@ set
     reply_to = excluded.reply_to,
     body = excluded.body,
     upvote_count = excluded.upvote_count;
+
+-- name: FindKnownIssues :many
+select
+    number
+from
+    issues;
+
+-- name: FindMostRecentlyUpdatedIssue :one
+select
+    updated_at
+from
+    issues
+order by
+    updated_at desc
+limit
+    1;
+
+-- name: InsertIssue :exec
+insert into
+    issues (
+        number,
+        title,
+        url,
+        state,
+        state_reason,
+        created_at,
+        updated_at,
+        closed_at,
+        author,
+        labels,
+        body,
+        locked,
+        reactions
+    )
+values
+    (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) on conflict(number) do
+update
+set
+    title = excluded.title,
+    url = excluded.url,
+    state = excluded.state,
+    state_reason = excluded.state_reason,
+    created_at = excluded.created_at,
+    updated_at = excluded.updated_at,
+    closed_at = excluded.closed_at,
+    author = excluded.author,
+    labels = excluded.labels,
+    body = excluded.body,
+    locked = excluded.locked,
+    reactions = excluded.reactions;
+
+-- name: InsertIssueComment :exec
+insert into
+    issue_comments (
+        issue_number,
+        id,
+        created_at,
+        updated_at,
+        author,
+        body
+    )
+values
+    (?, ?, ?, ?, ?, ?) on conflict(id) do
+update
+set
+    id = excluded.id,
+    created_at = excluded.created_at,
+    updated_at = excluded.updated_at,
+    author = excluded.author,
+    body = excluded.body;
