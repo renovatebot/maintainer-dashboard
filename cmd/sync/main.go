@@ -240,4 +240,83 @@ func main() {
 		}
 		updateExistingIssuesTracker.MarkAsDone()
 	}
+
+	lastDBPRUpdateVal, err := queries.FindMostRecentlyUpdatedPullRequest(ctx)
+	if errors.Is(err, sql.ErrNoRows) {
+		lastDBPRUpdateVal = "1970-01-01T00:00:00Z"
+	} else if err != nil {
+		logger.Error(fmt.Sprintf("Failed to find most recently updated pull request in database: %v", err), "err", err)
+		os.Exit(1)
+	}
+
+	lastDBPRUpdate, err := time.Parse(time.RFC3339, lastDBPRUpdateVal)
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to parse last updated pull request timestamp from database: %v", err), "err", err)
+		os.Exit(1)
+	}
+
+	clientPair = clientPool.GetNextAvailableClient(ctx)
+	lastPRUpdate, err := github.GetMostRecentlyUpdatedPullRequest(ctx, clientPair.RestClient, clientPair.GqlClient, "renovatebot", "renovate")
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to get most recently updated pull request from GitHub: %v", err), "err", err)
+		os.Exit(1)
+	}
+
+	if lastDBPRUpdate.Equal(lastPRUpdate) || lastDBPRUpdate.After(lastPRUpdate) {
+		logger.Info("No new pull requests to sync, database is up-to-date", "lastUpdateOnGitHub", lastPRUpdate, "lastUpdateInDatabase", lastDBPRUpdate)
+	} else {
+		finished := false
+
+		updateExistingPRsTracker := progress.Tracker{
+			Message: "Updating existing Pull Requests",
+		}
+		pw.AppendTracker(&updateExistingPRsTracker)
+
+		var nextPRCursor *githubv4.String
+		for !finished {
+			clientPair := clientPool.GetNextAvailableClient(ctx)
+
+			var prs []github.MostRecentlyUpdatedPullRequest
+			prs, nextPRCursor, err = github.ListMostRecentlyUpdatedPullRequests(ctx, clientPair.RestClient, clientPair.GqlClient, "renovatebot", "renovate", 10, nextPRCursor)
+			if err != nil {
+				logger.Error(fmt.Sprintf("Failed to query pull request numbers: %v", err), "err", err)
+				break
+			}
+
+			if prs == nil {
+				finished = true
+				continue
+			}
+
+			if nextPRCursor == nil {
+				finished = true
+				continue
+			}
+
+			for _, pr := range prs {
+				if pr.UpdatedAt.Before(lastDBPRUpdate) {
+					finished = true
+					break
+				}
+
+				clientPair = clientPool.GetNextAvailableClient(ctx)
+				p, err := github.RetrievePullRequest(ctx, clientPair.RestClient, clientPair.GqlClient, "renovatebot", "renovate", pr.Number)
+				if err != nil {
+					updateExistingPRsTracker.IncrementWithError(1)
+					logger.Error(fmt.Sprintf("Failed to retrieve pull request #%d: %v", pr.Number, err), "err", err)
+					continue
+				}
+
+				err = queries.InsertPullRequest(ctx, p)
+				if err != nil {
+					updateExistingPRsTracker.IncrementWithError(1)
+					logger.Error(fmt.Sprintf("Failed to insert pull request #%d: %v", pr.Number, err), "err", err)
+					continue
+				}
+
+				updateExistingPRsTracker.Increment(1)
+			}
+		}
+		updateExistingPRsTracker.MarkAsDone()
+	}
 }

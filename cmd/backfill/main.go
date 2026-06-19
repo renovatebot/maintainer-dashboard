@@ -169,4 +169,50 @@ func main() {
 		updateExistingIssuesTracker.Increment(1)
 	}
 	updateExistingIssuesTracker.MarkAsDone()
+
+	prNumbers, err := queries.FindKnownPullRequests(ctx)
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to find known pull requests: %v", err), "err", err)
+		os.Exit(1)
+	}
+
+	updateExistingPRsTracker := progress.Tracker{
+		Message: "Backfilling updates to existing Pull Requests",
+		Total:   int64(len(prNumbers)),
+	}
+	pw.AppendTracker(&updateExistingPRsTracker)
+
+	if fromNumber != nil && *fromNumber > 0 {
+		var filtered []int64
+		for _, num := range prNumbers {
+			if num >= *fromNumber {
+				filtered = append(filtered, num)
+			} else {
+				updateExistingPRsTracker.Increment(1)
+			}
+		}
+		prNumbers = filtered
+		logger.Info(fmt.Sprintf("Filtered to %d pull requests from #%d onwards", len(prNumbers), *fromNumber))
+	}
+
+	for _, prNumber := range prNumbers {
+		client := clientPool.GetNextAvailableClient(ctx)
+
+		p, err := github.RetrievePullRequest(ctx, client.RestClient, client.GqlClient, "renovatebot", "renovate", prNumber)
+		if err != nil {
+			updateExistingPRsTracker.IncrementWithError(1)
+			logger.Error(fmt.Sprintf("Failed to retrieve pull request #%d: %v", prNumber, err), "err", err)
+			continue
+		}
+
+		err = queries.InsertPullRequest(ctx, p)
+		if err != nil {
+			updateExistingPRsTracker.IncrementWithError(1)
+			logger.Error(fmt.Sprintf("Failed to insert pull request #%d: %v", prNumber, err), "err", err)
+			continue
+		}
+
+		updateExistingPRsTracker.Increment(1)
+	}
+	updateExistingPRsTracker.MarkAsDone()
 }

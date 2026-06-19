@@ -72,6 +72,36 @@ func (q *Queries) FindKnownIssues(ctx context.Context) ([]int64, error) {
 	return items, nil
 }
 
+const findKnownPullRequests = `-- name: FindKnownPullRequests :many
+select
+    number
+from
+    pull_requests
+`
+
+func (q *Queries) FindKnownPullRequests(ctx context.Context) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, findKnownPullRequests)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var number int64
+		if err := rows.Scan(&number); err != nil {
+			return nil, err
+		}
+		items = append(items, number)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const findMostRecentlyUpdatedDiscussion = `-- name: FindMostRecentlyUpdatedDiscussion :one
 select
     updated_at
@@ -101,6 +131,24 @@ limit
 
 func (q *Queries) FindMostRecentlyUpdatedIssue(ctx context.Context) (string, error) {
 	row := q.db.QueryRowContext(ctx, findMostRecentlyUpdatedIssue)
+	var updated_at string
+	err := row.Scan(&updated_at)
+	return updated_at, err
+}
+
+const findMostRecentlyUpdatedPullRequest = `-- name: FindMostRecentlyUpdatedPullRequest :one
+select
+    updated_at
+from
+    pull_requests
+order by
+    updated_at desc
+limit
+    1
+`
+
+func (q *Queries) FindMostRecentlyUpdatedPullRequest(ctx context.Context) (string, error) {
+	row := q.db.QueryRowContext(ctx, findMostRecentlyUpdatedPullRequest)
 	var updated_at string
 	err := row.Scan(&updated_at)
 	return updated_at, err
@@ -390,6 +438,96 @@ func (q *Queries) InsertIssueComment(ctx context.Context, arg InsertIssueComment
 		arg.UpdatedAt,
 		arg.Author,
 		arg.Body,
+	)
+	return err
+}
+
+const insertPullRequest = `-- name: InsertPullRequest :exec
+insert into
+    pull_requests (
+        number,
+        title,
+        url,
+        state,
+        created_at,
+        updated_at,
+        closed_at,
+        merged_at,
+        author,
+        labels,
+        body,
+        is_draft,
+        head_ref_name,
+        base_ref_name,
+        review_decision,
+        additions,
+        deletions,
+        changed_files
+    )
+values
+    (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) on conflict(number) do
+update
+set
+    title = excluded.title,
+    url = excluded.url,
+    state = excluded.state,
+    created_at = excluded.created_at,
+    updated_at = excluded.updated_at,
+    closed_at = excluded.closed_at,
+    merged_at = excluded.merged_at,
+    author = excluded.author,
+    labels = excluded.labels,
+    body = excluded.body,
+    is_draft = excluded.is_draft,
+    head_ref_name = excluded.head_ref_name,
+    base_ref_name = excluded.base_ref_name,
+    review_decision = excluded.review_decision,
+    additions = excluded.additions,
+    deletions = excluded.deletions,
+    changed_files = excluded.changed_files
+`
+
+type InsertPullRequestParams struct {
+	Number         int64
+	Title          string
+	Url            string
+	State          string
+	CreatedAt      string
+	UpdatedAt      string
+	ClosedAt       sql.NullString
+	MergedAt       sql.NullString
+	Author         string
+	Labels         json.RawMessage
+	Body           sql.NullString
+	IsDraft        int64
+	HeadRefName    string
+	BaseRefName    string
+	ReviewDecision sql.NullString
+	Additions      int64
+	Deletions      int64
+	ChangedFiles   int64
+}
+
+func (q *Queries) InsertPullRequest(ctx context.Context, arg InsertPullRequestParams) error {
+	_, err := q.db.ExecContext(ctx, insertPullRequest,
+		arg.Number,
+		arg.Title,
+		arg.Url,
+		arg.State,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+		arg.ClosedAt,
+		arg.MergedAt,
+		arg.Author,
+		arg.Labels,
+		arg.Body,
+		arg.IsDraft,
+		arg.HeadRefName,
+		arg.BaseRefName,
+		arg.ReviewDecision,
+		arg.Additions,
+		arg.Deletions,
+		arg.ChangedFiles,
 	)
 	return err
 }

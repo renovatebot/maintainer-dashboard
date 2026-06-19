@@ -848,3 +848,192 @@ func RetrieveIssueAndComments(ctx context.Context, client *github.Client, gqlCli
 
 	return issue, comments, nil
 }
+
+func GetMostRecentlyUpdatedPullRequest(ctx context.Context, client *github.Client, gqlClient *githubv4.Client, org, repo string) (time.Time, error) {
+	var q struct {
+		Repository struct {
+			PullRequests struct {
+				Edges []struct {
+					Node struct {
+						Number    int64
+						UpdatedAt githubv4.DateTime
+					}
+				}
+			} `graphql:"pullRequests(first: 1, orderBy:{field:UPDATED_AT, direction:DESC})"`
+		} `graphql:"repository(owner: $owner, name: $name)"`
+	}
+	variables := map[string]any{
+		"owner": githubv4.String(org),
+		"name":  githubv4.String(repo),
+	}
+
+	err := gqlClient.Query(ctx, &q, variables)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to query most recently updated pull request for %v/%v: %w", org, repo, err)
+	}
+
+	if len(q.Repository.PullRequests.Edges) == 0 {
+		return time.Time{}, nil
+	}
+
+	return q.Repository.PullRequests.Edges[0].Node.UpdatedAt.Time, nil
+}
+
+type MostRecentlyUpdatedPullRequest struct {
+	Number    int64
+	UpdatedAt time.Time
+}
+
+func ListMostRecentlyUpdatedPullRequests(ctx context.Context, client *github.Client, gqlClient *githubv4.Client, org, repo string, mostRecent int, cursor *githubv4.String) ([]MostRecentlyUpdatedPullRequest, *githubv4.String, error) {
+	var q struct {
+		Repository struct {
+			PullRequests struct {
+				PageInfo struct {
+					EndCursor   githubv4.String
+					HasNextPage githubv4.Boolean
+				}
+				Edges []struct {
+					Node struct {
+						Number    int64
+						UpdatedAt githubv4.DateTime
+					}
+				}
+			} `graphql:"pullRequests(first: $mostRecent, orderBy:{field:UPDATED_AT, direction:DESC}, after: $cursor)"`
+		} `graphql:"repository(owner: $owner, name: $name)"`
+	}
+	variables := map[string]any{
+		"owner":      githubv4.String(org),
+		"name":       githubv4.String(repo),
+		"mostRecent": githubv4.Int(mostRecent),
+		"cursor":     cursor,
+	}
+
+	var results []MostRecentlyUpdatedPullRequest
+
+	err := gqlClient.Query(ctx, &q, variables)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to list most recently updated pull requests for %v/%v: %w", org, repo, err)
+	}
+	for _, edge := range q.Repository.PullRequests.Edges {
+		results = append(results, MostRecentlyUpdatedPullRequest{
+			Number:    edge.Node.Number,
+			UpdatedAt: edge.Node.UpdatedAt.Time,
+		})
+	}
+
+	return results, &q.Repository.PullRequests.PageInfo.EndCursor, nil
+}
+
+func RetrievePullRequest(ctx context.Context, client *github.Client, gqlClient *githubv4.Client, org, repo string, number int64) (db.InsertPullRequestParams, error) {
+	var q struct {
+		Repository struct {
+			PullRequest struct {
+				Title    githubv4.String
+				URL      githubv4.URI
+				State    githubv4.String
+				IsDraft  githubv4.Boolean
+				Author   *struct {
+					Typename string `graphql:"__typename"`
+					Login    githubv4.String
+				}
+				CreatedAt      githubv4.DateTime
+				UpdatedAt      githubv4.DateTime
+				ClosedAt       *githubv4.DateTime
+				MergedAt       *githubv4.DateTime
+				HeadRefName    githubv4.String
+				BaseRefName    githubv4.String
+				ReviewDecision *githubv4.String
+				Additions      githubv4.Int
+				Deletions      githubv4.Int
+				ChangedFiles   githubv4.Int
+				Labels         struct {
+					Edges []struct {
+						Node struct {
+							Name githubv4.String
+						}
+					}
+				} `graphql:"labels(first:100)"`
+				Body githubv4.String
+			} `graphql:"pullRequest(number: $number)"`
+		} `graphql:"repository(owner: $owner, name: $name)"`
+	}
+
+	variables := map[string]any{
+		"owner":  githubv4.String(org),
+		"name":   githubv4.String(repo),
+		"number": githubv4.Int(number),
+	}
+
+	err := gqlClient.Query(ctx, &q, variables)
+	if err != nil {
+		return db.InsertPullRequestParams{}, fmt.Errorf("failed to query %v/%v PullRequest %v: %w", org, repo, number, err)
+	}
+
+	author := ""
+	if q.Repository.PullRequest.Author != nil {
+		author = string(q.Repository.PullRequest.Author.Login)
+		if q.Repository.PullRequest.Author.Typename == "Bot" {
+			author = author + "[bot]"
+		}
+	}
+
+	isDraft := int64(0)
+	if bool(q.Repository.PullRequest.IsDraft) {
+		isDraft = 1
+	}
+
+	pr := db.InsertPullRequestParams{
+		Number:      number,
+		Title:       string(q.Repository.PullRequest.Title),
+		Url:         q.Repository.PullRequest.URL.String(),
+		State:       string(q.Repository.PullRequest.State),
+		CreatedAt:   q.Repository.PullRequest.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:   q.Repository.PullRequest.UpdatedAt.Format(time.RFC3339),
+		Author:      author,
+		Labels:      []byte("[]"),
+		Body: sql.NullString{
+			String: string(q.Repository.PullRequest.Body),
+			Valid:  true,
+		},
+		IsDraft:      isDraft,
+		HeadRefName:  string(q.Repository.PullRequest.HeadRefName),
+		BaseRefName:  string(q.Repository.PullRequest.BaseRefName),
+		Additions:    int64(q.Repository.PullRequest.Additions),
+		Deletions:    int64(q.Repository.PullRequest.Deletions),
+		ChangedFiles: int64(q.Repository.PullRequest.ChangedFiles),
+	}
+
+	if q.Repository.PullRequest.ClosedAt != nil {
+		pr.ClosedAt = sql.NullString{
+			String: q.Repository.PullRequest.ClosedAt.Format(time.RFC3339),
+			Valid:  true,
+		}
+	}
+
+	if q.Repository.PullRequest.MergedAt != nil {
+		pr.MergedAt = sql.NullString{
+			String: q.Repository.PullRequest.MergedAt.Format(time.RFC3339),
+			Valid:  true,
+		}
+	}
+
+	if q.Repository.PullRequest.ReviewDecision != nil {
+		pr.ReviewDecision = sql.NullString{
+			String: string(*q.Repository.PullRequest.ReviewDecision),
+			Valid:  true,
+		}
+	}
+
+	var labels []string
+	for _, edge := range q.Repository.PullRequest.Labels.Edges {
+		labels = append(labels, string(edge.Node.Name))
+	}
+	if len(labels) > 0 {
+		pr.Labels, err = json.Marshal(labels)
+		if err != nil {
+			return db.InsertPullRequestParams{}, fmt.Errorf("failed to marshal labels: %w", err)
+		}
+	}
+
+	return pr, nil
+}

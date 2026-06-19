@@ -100,3 +100,27 @@ create table if not exists issue_comments (
     author text not null,
     body text
 );
+
+create table if not exists pull_requests (
+    number integer primary key,
+    title text not null,
+    url text not null,
+    state text check(state in ('OPEN', 'CLOSED', 'MERGED')) not null,
+    created_at text not null,
+    -- updated_at stores the GitHub PullRequest.updatedAt value
+    updated_at text not null,
+    closed_at text,
+    merged_at text,
+    author text not null,
+    -- a JSON array of label names
+    labels json,
+    body text,
+    is_draft integer not null default 0 check(is_draft in (0, 1)),
+    head_ref_name text not null,
+    base_ref_name text not null,
+    -- GraphQL PullRequestReviewDecision: APPROVED, CHANGES_REQUESTED, REVIEW_REQUIRED, or null
+    review_decision text,
+    additions integer not null default 0,
+    deletions integer not null default 0,
+    changed_files integer not null default 0
+);
