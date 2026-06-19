@@ -70,3 +70,24 @@ type IssueComment struct {
 	Author      string
 	Body        sql.NullString
 }
+
+type PullRequest struct {
+	Number         int64
+	Title          string
+	Url            string
+	State          string
+	CreatedAt      string
+	UpdatedAt      string
+	ClosedAt       sql.NullString
+	MergedAt       sql.NullString
+	Author         string
+	Labels         json.RawMessage
+	Body           sql.NullString
+	IsDraft        int64
+	HeadRefName    string
+	BaseRefName    string
+	ReviewDecision sql.NullString
+	Additions      int64
+	Deletions      int64
+	ChangedFiles   int64
+}
