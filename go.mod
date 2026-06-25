@@ -5,7 +5,7 @@ go 1.25.5
 require (
 	github.com/bradleyfalzon/ghinstallation/v2 v2.17.0
 	github.com/google/go-github/v81 v81.0.0
-	github.com/jedib0t/go-pretty/v6 v6.7.8
+	github.com/jedib0t/go-pretty/v6 v6.8.1
 	github.com/shurcooL/githubv4 v0.0.0-20240727222349-48295856cce7
 	modernc.org/sqlite v1.43.0
 )
