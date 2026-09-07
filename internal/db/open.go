@@ -9,6 +9,8 @@ import (
 
 var defaultDBPragmasForWrite = map[string]string{
 	"foreign_keys": "On",
+	// Wait for locks to clear instead of failing immediately with SQLITE_BUSY.
+	"busy_timeout": "5000",
 }
 
 func Open(path string) (*sql.DB, error) {
