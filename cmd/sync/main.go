@@ -131,7 +131,9 @@ func main() {
 					continue
 				}
 
-				err = queries.InsertDiscussion(ctx, d)
+				err = db.RetryOnBusy(ctx, logger, func() error {
+					return queries.InsertDiscussion(ctx, d)
+				})
 				if err != nil {
 					updateExistingDiscussionsTracker.IncrementWithError(1)
 					logger.Error(fmt.Sprintf("Failed to insert discussion #%d: %v", discussion.Number, err), "err", err)
@@ -139,7 +141,9 @@ func main() {
 				}
 
 				for _, comment := range comments {
-					err = queries.InsertDiscussionComment(ctx, comment)
+					err = db.RetryOnBusy(ctx, logger, func() error {
+						return queries.InsertDiscussionComment(ctx, comment)
+					})
 					if err != nil {
 						updateExistingDiscussionsTracker.IncrementWithError(1)
 						logger.Error(fmt.Sprintf("Failed to insert comment for discussion #%d: %v", discussion.Number, err), "err", err)
@@ -219,7 +223,9 @@ func main() {
 					continue
 				}
 
-				err = queries.InsertIssue(ctx, i)
+				err = db.RetryOnBusy(ctx, logger, func() error {
+					return queries.InsertIssue(ctx, i)
+				})
 				if err != nil {
 					updateExistingIssuesTracker.IncrementWithError(1)
 					logger.Error(fmt.Sprintf("Failed to insert issue #%d: %v", issue.Number, err), "err", err)
@@ -227,7 +233,9 @@ func main() {
 				}
 
 				for _, comment := range comments {
-					err = queries.InsertIssueComment(ctx, comment)
+					err = db.RetryOnBusy(ctx, logger, func() error {
+						return queries.InsertIssueComment(ctx, comment)
+					})
 					if err != nil {
 						updateExistingIssuesTracker.IncrementWithError(1)
 						logger.Error(fmt.Sprintf("Failed to insert comment for issue #%d: %v", issue.Number, err), "err", err)
@@ -307,7 +315,9 @@ func main() {
 					continue
 				}
 
-				err = queries.InsertPullRequest(ctx, p)
+				err = db.RetryOnBusy(ctx, logger, func() error {
+					return queries.InsertPullRequest(ctx, p)
+				})
 				if err != nil {
 					updateExistingPRsTracker.IncrementWithError(1)
 					logger.Error(fmt.Sprintf("Failed to insert pull request #%d: %v", pr.Number, err), "err", err)
