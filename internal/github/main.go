@@ -470,7 +470,7 @@ func RetrieveDiscussionAndComments(ctx context.Context, client *github.Client, g
 			})
 
 			if node.Replies.PageInfo.HasNextPage {
-				slog.Warn(fmt.Sprintf("TODO: The %s/%s Discussion %s has a reply (ID %v) which has >100 replies. Only fetching last 100", org, repo, number, node.ID))
+				slog.Warn(fmt.Sprintf("TODO: The %s/%s Discussion %d has a reply (ID %v) which has >100 replies. Only fetching last 100", org, repo, number, node.ID))
 			}
 
 			for _, reply := range node.Replies.Nodes {
