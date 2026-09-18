@@ -34,8 +34,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	_, err = sqlDB.Query(db.CreateTablesQuery)
-	if err != nil {
+	if err := db.Migrate(sqlDB); err != nil {
 		logger.Error(fmt.Sprintf("Failed to initialise/migrate database: %v", err), "err", err)
 		os.Exit(1)
 	}
