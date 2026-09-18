@@ -300,7 +300,7 @@ func main() {
 				}
 
 				clientPair = clientPool.GetNextAvailableClient(ctx)
-				p, err := github.RetrievePullRequest(ctx, clientPair.RestClient, clientPair.GqlClient, "renovatebot", "renovate", pr.Number)
+				p, comments, reviews, reviewComments, err := github.RetrievePullRequestAndComments(ctx, clientPair.RestClient, clientPair.GqlClient, "renovatebot", "renovate", pr.Number)
 				if err != nil {
 					updateExistingPRsTracker.IncrementWithError(1)
 					logger.Error(fmt.Sprintf("Failed to retrieve pull request #%d: %v", pr.Number, err), "err", err)
@@ -312,6 +312,33 @@ func main() {
 					updateExistingPRsTracker.IncrementWithError(1)
 					logger.Error(fmt.Sprintf("Failed to insert pull request #%d: %v", pr.Number, err), "err", err)
 					continue
+				}
+
+				for _, comment := range comments {
+					err = queries.InsertPullRequestComment(ctx, comment)
+					if err != nil {
+						updateExistingPRsTracker.IncrementWithError(1)
+						logger.Error(fmt.Sprintf("Failed to insert comment for pull request #%d: %v", pr.Number, err), "err", err)
+						continue
+					}
+				}
+
+				for _, review := range reviews {
+					err = queries.InsertPullRequestReview(ctx, review)
+					if err != nil {
+						updateExistingPRsTracker.IncrementWithError(1)
+						logger.Error(fmt.Sprintf("Failed to insert review for pull request #%d: %v", pr.Number, err), "err", err)
+						continue
+					}
+				}
+
+				for _, reviewComment := range reviewComments {
+					err = queries.InsertPullRequestReviewComment(ctx, reviewComment)
+					if err != nil {
+						updateExistingPRsTracker.IncrementWithError(1)
+						logger.Error(fmt.Sprintf("Failed to insert review comment for pull request #%d: %v", pr.Number, err), "err", err)
+						continue
+					}
 				}
 
 				updateExistingPRsTracker.Increment(1)

@@ -91,3 +91,36 @@ type PullRequest struct {
 	Deletions      int64
 	ChangedFiles   int64
 }
+
+type PullRequestComment struct {
+	PullRequestNumber int64
+	ID                string
+	CreatedAt         string
+	UpdatedAt         string
+	Author            string
+	Body              sql.NullString
+}
+
+type PullRequestReview struct {
+	PullRequestNumber int64
+	ID                string
+	Author            string
+	State             string
+	Body              sql.NullString
+	SubmittedAt       sql.NullString
+	CreatedAt         string
+	UpdatedAt         string
+}
+
+type PullRequestReviewComment struct {
+	PullRequestReviewID string
+	PullRequestNumber   int64
+	ID                  string
+	CreatedAt           string
+	UpdatedAt           string
+	Author              string
+	Body                sql.NullString
+	Path                string
+	DiffHunk            sql.NullString
+	ReplyTo             sql.NullString
+}

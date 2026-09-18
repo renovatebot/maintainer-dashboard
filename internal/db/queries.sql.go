@@ -531,3 +531,150 @@ func (q *Queries) InsertPullRequest(ctx context.Context, arg InsertPullRequestPa
 	)
 	return err
 }
+
+const insertPullRequestComment = `-- name: InsertPullRequestComment :exec
+insert into
+    pull_request_comments (
+        pull_request_number,
+        id,
+        created_at,
+        updated_at,
+        author,
+        body
+    )
+values
+    (?, ?, ?, ?, ?, ?) on conflict(id) do
+update
+set
+    created_at = excluded.created_at,
+    updated_at = excluded.updated_at,
+    author = excluded.author,
+    body = excluded.body
+`
+
+type InsertPullRequestCommentParams struct {
+	PullRequestNumber int64
+	ID                string
+	CreatedAt         string
+	UpdatedAt         string
+	Author            string
+	Body              sql.NullString
+}
+
+func (q *Queries) InsertPullRequestComment(ctx context.Context, arg InsertPullRequestCommentParams) error {
+	_, err := q.db.ExecContext(ctx, insertPullRequestComment,
+		arg.PullRequestNumber,
+		arg.ID,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+		arg.Author,
+		arg.Body,
+	)
+	return err
+}
+
+const insertPullRequestReview = `-- name: InsertPullRequestReview :exec
+insert into
+    pull_request_reviews (
+        pull_request_number,
+        id,
+        author,
+        state,
+        body,
+        submitted_at,
+        created_at,
+        updated_at
+    )
+values
+    (?, ?, ?, ?, ?, ?, ?, ?) on conflict(id) do
+update
+set
+    author = excluded.author,
+    state = excluded.state,
+    body = excluded.body,
+    submitted_at = excluded.submitted_at,
+    created_at = excluded.created_at,
+    updated_at = excluded.updated_at
+`
+
+type InsertPullRequestReviewParams struct {
+	PullRequestNumber int64
+	ID                string
+	Author            string
+	State             string
+	Body              sql.NullString
+	SubmittedAt       sql.NullString
+	CreatedAt         string
+	UpdatedAt         string
+}
+
+func (q *Queries) InsertPullRequestReview(ctx context.Context, arg InsertPullRequestReviewParams) error {
+	_, err := q.db.ExecContext(ctx, insertPullRequestReview,
+		arg.PullRequestNumber,
+		arg.ID,
+		arg.Author,
+		arg.State,
+		arg.Body,
+		arg.SubmittedAt,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	return err
+}
+
+const insertPullRequestReviewComment = `-- name: InsertPullRequestReviewComment :exec
+insert into
+    pull_request_review_comments (
+        pull_request_review_id,
+        pull_request_number,
+        id,
+        created_at,
+        updated_at,
+        author,
+        body,
+        path,
+        diff_hunk,
+        reply_to
+    )
+values
+    (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) on conflict(id) do
+update
+set
+    pull_request_review_id = excluded.pull_request_review_id,
+    created_at = excluded.created_at,
+    updated_at = excluded.updated_at,
+    author = excluded.author,
+    body = excluded.body,
+    path = excluded.path,
+    diff_hunk = excluded.diff_hunk,
+    reply_to = excluded.reply_to
+`
+
+type InsertPullRequestReviewCommentParams struct {
+	PullRequestReviewID string
+	PullRequestNumber   int64
+	ID                  string
+	CreatedAt           string
+	UpdatedAt           string
+	Author              string
+	Body                sql.NullString
+	Path                string
+	DiffHunk            sql.NullString
+	ReplyTo             sql.NullString
+}
+
+func (q *Queries) InsertPullRequestReviewComment(ctx context.Context, arg InsertPullRequestReviewCommentParams) error {
+	_, err := q.db.ExecContext(ctx, insertPullRequestReviewComment,
+		arg.PullRequestReviewID,
+		arg.PullRequestNumber,
+		arg.ID,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+		arg.Author,
+		arg.Body,
+		arg.Path,
+		arg.DiffHunk,
+		arg.ReplyTo,
+	)
+	return err
+}

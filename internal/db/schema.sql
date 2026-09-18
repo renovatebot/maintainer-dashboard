@@ -124,3 +124,49 @@ create table if not exists pull_requests (
     deletions integer not null default 0,
     changed_files integer not null default 0
 );
+
+create table if not exists pull_request_comments (
+    -- TODO foreign key
+    pull_request_number integer not null,
+    id text primary key,
+    created_at text not null,
+    updated_at text not null,
+    author text not null,
+    body text
+);
+
+create table if not exists pull_request_reviews (
+    -- TODO foreign key
+    pull_request_number integer not null,
+    id text primary key,
+    author text not null,
+    -- GraphQL PullRequestReviewState
+    state text check(
+        state in (
+            'PENDING',
+            'COMMENTED',
+            'APPROVED',
+            'CHANGES_REQUESTED',
+            'DISMISSED'
+        )
+    ) not null,
+    body text,
+    submitted_at text,
+    created_at text not null,
+    updated_at text not null
+);
+
+create table if not exists pull_request_review_comments (
+    -- TODO foreign key
+    pull_request_review_id text not null,
+    pull_request_number integer not null,
+    id text primary key,
+    created_at text not null,
+    updated_at text not null,
+    author text not null,
+    body text,
+    path text not null,
+    diff_hunk text,
+    -- NOTE: NULL for top-level review comments (not replies)
+    reply_to text
+);

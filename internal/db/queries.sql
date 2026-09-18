@@ -212,3 +212,72 @@ set
     additions = excluded.additions,
     deletions = excluded.deletions,
     changed_files = excluded.changed_files;
+
+-- name: InsertPullRequestComment :exec
+insert into
+    pull_request_comments (
+        pull_request_number,
+        id,
+        created_at,
+        updated_at,
+        author,
+        body
+    )
+values
+    (?, ?, ?, ?, ?, ?) on conflict(id) do
+update
+set
+    created_at = excluded.created_at,
+    updated_at = excluded.updated_at,
+    author = excluded.author,
+    body = excluded.body;
+
+-- name: InsertPullRequestReview :exec
+insert into
+    pull_request_reviews (
+        pull_request_number,
+        id,
+        author,
+        state,
+        body,
+        submitted_at,
+        created_at,
+        updated_at
+    )
+values
+    (?, ?, ?, ?, ?, ?, ?, ?) on conflict(id) do
+update
+set
+    author = excluded.author,
+    state = excluded.state,
+    body = excluded.body,
+    submitted_at = excluded.submitted_at,
+    created_at = excluded.created_at,
+    updated_at = excluded.updated_at;
+
+-- name: InsertPullRequestReviewComment :exec
+insert into
+    pull_request_review_comments (
+        pull_request_review_id,
+        pull_request_number,
+        id,
+        created_at,
+        updated_at,
+        author,
+        body,
+        path,
+        diff_hunk,
+        reply_to
+    )
+values
+    (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) on conflict(id) do
+update
+set
+    pull_request_review_id = excluded.pull_request_review_id,
+    created_at = excluded.created_at,
+    updated_at = excluded.updated_at,
+    author = excluded.author,
+    body = excluded.body,
+    path = excluded.path,
+    diff_hunk = excluded.diff_hunk,
+    reply_to = excluded.reply_to;

@@ -924,7 +924,7 @@ func ListMostRecentlyUpdatedPullRequests(ctx context.Context, client *github.Cli
 	return results, &q.Repository.PullRequests.PageInfo.EndCursor, nil
 }
 
-func RetrievePullRequest(ctx context.Context, client *github.Client, gqlClient *githubv4.Client, org, repo string, number int64) (db.InsertPullRequestParams, error) {
+func RetrievePullRequestAndComments(ctx context.Context, client *github.Client, gqlClient *githubv4.Client, org, repo string, number int64) (db.InsertPullRequestParams, []db.InsertPullRequestCommentParams, []db.InsertPullRequestReviewParams, []db.InsertPullRequestReviewCommentParams, error) {
 	var q struct {
 		Repository struct {
 			PullRequest struct {
@@ -966,7 +966,7 @@ func RetrievePullRequest(ctx context.Context, client *github.Client, gqlClient *
 
 	err := gqlClient.Query(ctx, &q, variables)
 	if err != nil {
-		return db.InsertPullRequestParams{}, fmt.Errorf("failed to query %v/%v PullRequest %v: %w", org, repo, number, err)
+		return db.InsertPullRequestParams{}, nil, nil, nil, fmt.Errorf("failed to query %v/%v PullRequest %v: %w", org, repo, number, err)
 	}
 
 	author := ""
@@ -1031,9 +1031,215 @@ func RetrievePullRequest(ctx context.Context, client *github.Client, gqlClient *
 	if len(labels) > 0 {
 		pr.Labels, err = json.Marshal(labels)
 		if err != nil {
-			return db.InsertPullRequestParams{}, fmt.Errorf("failed to marshal labels: %w", err)
+			return db.InsertPullRequestParams{}, nil, nil, nil, fmt.Errorf("failed to marshal labels: %w", err)
 		}
 	}
 
-	return pr, nil
+	var prCommentsQuery struct {
+		Repository struct {
+			PullRequest struct {
+				Comments struct {
+					PageInfo struct {
+						HasNextPage githubv4.Boolean
+						EndCursor   githubv4.String
+					}
+					Nodes []struct {
+						ID        string
+						CreatedAt githubv4.DateTime
+						UpdatedAt githubv4.DateTime
+						Author    *struct {
+							Typename string `graphql:"__typename"`
+							Login    githubv4.String
+						}
+						Body githubv4.String
+					}
+				} `graphql:"comments(first: 100, after: $cursor)"`
+			} `graphql:"pullRequest(number: $number)"`
+		} `graphql:"repository(owner: $owner, name: $name)"`
+	}
+
+	var comments []db.InsertPullRequestCommentParams
+
+	commentsVariables := map[string]any{
+		"owner":  githubv4.String(org),
+		"name":   githubv4.String(repo),
+		"number": githubv4.Int(number),
+		"cursor": (*githubv4.String)(nil),
+	}
+
+	for {
+		err := gqlClient.Query(ctx, &prCommentsQuery, commentsVariables)
+		if err != nil {
+			return db.InsertPullRequestParams{}, nil, nil, nil, fmt.Errorf("failed to query pull request comments: %w", err)
+		}
+
+		for _, node := range prCommentsQuery.Repository.PullRequest.Comments.Nodes {
+			commentAuthor := ""
+			if node.Author != nil {
+				commentAuthor = string(node.Author.Login)
+				if node.Author.Typename == "Bot" {
+					commentAuthor = commentAuthor + "[bot]"
+				}
+			}
+
+			comments = append(comments, db.InsertPullRequestCommentParams{
+				PullRequestNumber: number,
+				ID:                node.ID,
+				CreatedAt:         node.CreatedAt.Format(time.RFC3339),
+				UpdatedAt:         node.UpdatedAt.Format(time.RFC3339),
+				Author:            commentAuthor,
+				Body: sql.NullString{
+					String: string(node.Body),
+					Valid:  true,
+				},
+			})
+		}
+
+		if !prCommentsQuery.Repository.PullRequest.Comments.PageInfo.HasNextPage {
+			break
+		}
+		commentsVariables["cursor"] = githubv4.NewString(prCommentsQuery.Repository.PullRequest.Comments.PageInfo.EndCursor)
+	}
+
+	var prReviewsQuery struct {
+		Repository struct {
+			PullRequest struct {
+				Reviews struct {
+					PageInfo struct {
+						HasNextPage githubv4.Boolean
+						EndCursor   githubv4.String
+					}
+					Nodes []struct {
+						ID     string
+						Author *struct {
+							Typename string `graphql:"__typename"`
+							Login    githubv4.String
+						}
+						State       githubv4.String
+						Body        githubv4.String
+						SubmittedAt *githubv4.DateTime
+						CreatedAt   githubv4.DateTime
+						UpdatedAt   githubv4.DateTime
+						Comments    struct {
+							PageInfo struct {
+								HasNextPage githubv4.Boolean
+							}
+							Nodes []struct {
+								ID        string
+								CreatedAt githubv4.DateTime
+								UpdatedAt githubv4.DateTime
+								Author    *struct {
+									Typename string `graphql:"__typename"`
+									Login    githubv4.String
+								}
+								Body     githubv4.String
+								Path     githubv4.String
+								DiffHunk githubv4.String
+								ReplyTo  *struct {
+									ID string
+								}
+							}
+						} `graphql:"comments(first: 100)"`
+					}
+				} `graphql:"reviews(first: 100, after: $cursor)"`
+			} `graphql:"pullRequest(number: $number)"`
+		} `graphql:"repository(owner: $owner, name: $name)"`
+	}
+
+	var reviews []db.InsertPullRequestReviewParams
+	var reviewComments []db.InsertPullRequestReviewCommentParams
+
+	reviewsVariables := map[string]any{
+		"owner":  githubv4.String(org),
+		"name":   githubv4.String(repo),
+		"number": githubv4.Int(number),
+		"cursor": (*githubv4.String)(nil),
+	}
+
+	for {
+		err := gqlClient.Query(ctx, &prReviewsQuery, reviewsVariables)
+		if err != nil {
+			return db.InsertPullRequestParams{}, nil, nil, nil, fmt.Errorf("failed to query pull request reviews: %w", err)
+		}
+
+		for _, node := range prReviewsQuery.Repository.PullRequest.Reviews.Nodes {
+			reviewAuthor := ""
+			if node.Author != nil {
+				reviewAuthor = string(node.Author.Login)
+				if node.Author.Typename == "Bot" {
+					reviewAuthor = reviewAuthor + "[bot]"
+				}
+			}
+
+			review := db.InsertPullRequestReviewParams{
+				PullRequestNumber: number,
+				ID:                node.ID,
+				Author:            reviewAuthor,
+				State:             string(node.State),
+				Body: sql.NullString{
+					String: string(node.Body),
+					Valid:  true,
+				},
+				CreatedAt: node.CreatedAt.Format(time.RFC3339),
+				UpdatedAt: node.UpdatedAt.Format(time.RFC3339),
+			}
+
+			if node.SubmittedAt != nil {
+				review.SubmittedAt = sql.NullString{
+					String: node.SubmittedAt.Format(time.RFC3339),
+					Valid:  true,
+				}
+			}
+
+			reviews = append(reviews, review)
+
+			if node.Comments.PageInfo.HasNextPage {
+				slog.Warn(fmt.Sprintf("TODO: The %s/%s PullRequest %v Review %s has >100 comments. Only fetching first 100", org, repo, number, node.ID))
+			}
+
+			for _, comment := range node.Comments.Nodes {
+				commentAuthor := ""
+				if comment.Author != nil {
+					commentAuthor = string(comment.Author.Login)
+					if comment.Author.Typename == "Bot" {
+						commentAuthor = commentAuthor + "[bot]"
+					}
+				}
+
+				reviewComment := db.InsertPullRequestReviewCommentParams{
+					PullRequestReviewID: node.ID,
+					PullRequestNumber:   number,
+					ID:                  comment.ID,
+					CreatedAt:           comment.CreatedAt.Format(time.RFC3339),
+					UpdatedAt:           comment.UpdatedAt.Format(time.RFC3339),
+					Author:              commentAuthor,
+					Body: sql.NullString{
+						String: string(comment.Body),
+						Valid:  true,
+					},
+					Path: string(comment.Path),
+					DiffHunk: sql.NullString{
+						String: string(comment.DiffHunk),
+						Valid:  true,
+					},
+				}
+
+				if comment.ReplyTo != nil {
+					reviewComment.ReplyTo = sql.NullString{
+						String: comment.ReplyTo.ID,
+						Valid:  true,
+					}
+				}
+
+				reviewComments = append(reviewComments, reviewComment)
+			}
+		}
+
+		if !prReviewsQuery.Repository.PullRequest.Reviews.PageInfo.HasNextPage {
+			break
+		}
+		reviewsVariables["cursor"] = githubv4.NewString(prReviewsQuery.Repository.PullRequest.Reviews.PageInfo.EndCursor)
+	}
+
+	return pr, comments, reviews, reviewComments, nil
 }
