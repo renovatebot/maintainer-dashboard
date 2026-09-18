@@ -13,6 +13,7 @@ import (
 	"github.com/jedib0t/go-pretty/v6/progress"
 	"github.com/renovatebot/maintainer-dashboard/internal/db"
 	"github.com/renovatebot/maintainer-dashboard/internal/github"
+	"github.com/renovatebot/maintainer-dashboard/internal/progresswriter"
 	"github.com/shurcooL/githubv4"
 )
 
@@ -58,8 +59,7 @@ func main() {
 
 	clientPool := github.NewClientPool(*appId, installationIdList, *appKeyPath, logger)
 
-	pw := progress.NewWriter()
-	go pw.Render()
+	pw := progresswriter.New()
 
 	lastDBUpdateVal, err := queries.FindMostRecentlyUpdatedDiscussion(ctx)
 	if errors.Is(err, sql.ErrNoRows) {

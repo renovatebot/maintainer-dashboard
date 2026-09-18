@@ -7,6 +7,7 @@ require (
 	github.com/google/go-github/v81 v81.0.0
 	github.com/jedib0t/go-pretty/v6 v6.7.8
 	github.com/shurcooL/githubv4 v0.0.0-20240727222349-48295856cce7
+	golang.org/x/term v0.29.0
 	modernc.org/sqlite v1.43.0
 )
 
@@ -25,7 +26,6 @@ require (
 	golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sys v0.36.0 // indirect
-	golang.org/x/term v0.29.0 // indirect
 	golang.org/x/text v0.22.0 // indirect
 	modernc.org/libc v1.66.10 // indirect
 	modernc.org/mathutil v1.7.1 // indirect

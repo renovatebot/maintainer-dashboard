@@ -10,6 +10,7 @@ import (
 	"github.com/jedib0t/go-pretty/v6/progress"
 	"github.com/renovatebot/maintainer-dashboard/internal/db"
 	"github.com/renovatebot/maintainer-dashboard/internal/github"
+	"github.com/renovatebot/maintainer-dashboard/internal/progresswriter"
 )
 
 func main() {
@@ -55,8 +56,7 @@ func main() {
 
 	clientPool := github.NewClientPool(*appId, installationIdList, *appKeyPath, logger)
 
-	pw := progress.NewWriter()
-	go pw.Render()
+	pw := progresswriter.New()
 
 	discussionNumbers, err := queries.FindKnownDiscussions(ctx)
 	if err != nil {
