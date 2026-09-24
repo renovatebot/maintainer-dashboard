@@ -551,3 +551,61 @@ order by
 
 
 <DataTable data={needs_maintainer_input} />
+
+## Awaiting `@jamietanna`'s reply
+
+```sql awaiting_my_reply
+-- Co-authored-by: Claude Sonnet 5 (Claude Code)
+with my_last_comment as (
+    select
+        discussion_number,
+        max(created_at) as my_last_at
+    from
+        discussion_comments
+    where
+        author = 'jamietanna'
+    group by
+        discussion_number
+),
+replies_after_me as (
+    select
+        discussion_comments.discussion_number,
+        discussion_comments.created_at,
+        discussion_comments.author,
+        row_number() over (
+            partition by discussion_comments.discussion_number
+            order by
+                discussion_comments.created_at desc
+        ) as rn
+    from
+        discussion_comments
+        inner join my_last_comment on my_last_comment.discussion_number = discussion_comments.discussion_number
+    where
+        discussion_comments.author != 'jamietanna'
+        and discussion_comments.created_at > my_last_comment.my_last_at
+)
+select
+    discussions.number,
+    discussions.title,
+    discussions.url,
+    discussions.category_name,
+    my_last_comment.my_last_at,
+    replies_after_me.created_at as last_reply_at,
+    replies_after_me.author as last_replier,
+    date_diff(
+        'day',
+        cast(replies_after_me.created_at as date),
+        current_date
+    ) as days_waiting
+from
+    replies_after_me
+    inner join my_last_comment on my_last_comment.discussion_number = replies_after_me.discussion_number
+    inner join discussions on discussions.number = replies_after_me.discussion_number
+where
+    replies_after_me.rn = 1
+    and discussions.state in ('OPEN', 'REOPENED')
+order by
+    replies_after_me.created_at desc
+```
+
+<DataTable data={awaiting_my_reply} title="Open discussions I replied to, where someone has replied since" />
