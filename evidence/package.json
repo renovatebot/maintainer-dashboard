@@ -32,7 +32,7 @@
     "@evidence-dev/trino": "^1.0.10"
   },
   "overrides": {
-    "jsonwebtoken": "9.0.0",
+    "jsonwebtoken": "9.0.3",
     "trim@<0.0.3": ">0.0.3",
     "sqlite3": "5.1.5",
     "axios": "^1.7.4"
