@@ -107,6 +107,8 @@ select
     updated_at
 from
     discussions
+order by
+    updated_at desc
 limit
     1
 `
