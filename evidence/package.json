@@ -34,7 +34,7 @@
   "overrides": {
     "jsonwebtoken": "9.0.0",
     "trim@<0.0.3": ">0.0.3",
-    "sqlite3": "5.1.5",
+    "sqlite3": "5.1.7",
     "axios": "^1.7.4"
   }
 }
