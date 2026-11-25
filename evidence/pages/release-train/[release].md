@@ -69,6 +69,10 @@ And the weekdays releases went out on:
 
 <BarChart data={releases_by_weekday} x=weekday y=num_releases sort=false />
 
+Releases aren't attributed to an author, but commits are, so here are the weekdays commits were made on, by who authored them:
+
+<BarChart data={commits_by_weekday_author} x=weekday y=commits series=author_type sort=false />
+
 Given the conventional commit type, we also had:
 
 <DataTable data={commits_by_type} />
@@ -305,6 +309,22 @@ group by
     author_type
 order by
     month_start
+```
+
+```sql commits_by_weekday_author
+select
+    isodow(commit_date) as weekday_number,
+    dayname(commit_date) as weekday,
+    author_type,
+    COUNT(*) as commits
+from
+    ${commits_with_author_type}
+group by
+    weekday_number,
+    weekday,
+    author_type
+order by
+    weekday_number
 ```
 
 ```sql commits_by_author_type
