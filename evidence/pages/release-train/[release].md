@@ -20,7 +20,7 @@ select
 from
     releases
 where
-    major_version = ${params.release}
+    release_train = ${params.release}
     and tag not like '${params.release}.%-next%'
 group by
     release_date,
@@ -67,7 +67,7 @@ select
 from
     commits
 where
-    major_version = ${params.release}
+    release_train = ${params.release}
 ```
 
 
@@ -77,7 +77,7 @@ select
 from
     commits
 where
-    major_version = ${params.release}
+    release_train = ${params.release}
 ```
 
 ```sql num_releases
@@ -86,7 +86,7 @@ select
 from
     releases
 where
-    major_version = ${params.release}
+    release_train = ${params.release}
 ```
 
 ```sql num_minor_releases
@@ -95,7 +95,7 @@ select
 from
     releases
 where
-    major_version = ${params.release}
+    release_train = ${params.release}
     and is_minor = 1
 ```
 
@@ -106,7 +106,7 @@ select
 from
     commits
 where
-    major_version = ${params.release}
+    release_train = ${params.release}
     and type is not null
 group by
     type
@@ -121,7 +121,7 @@ select
 from
     commits
 where
-    major_version = ${params.release}
+    release_train = ${params.release}
     and type is not null
     and is_dependency_update = 0
 group by
@@ -137,7 +137,7 @@ select
 from
     commits
 where
-    major_version = ${params.release}
+    release_train = ${params.release}
     and scope is not null
     and is_dependency_update = 0
 group by
@@ -155,7 +155,7 @@ select
 from
     releases
 where
-    major_version = ${params.release}
+    release_train = ${params.release}
     and tag not like '${params.release}.%-next%'
 group by
     release_date
@@ -178,7 +178,7 @@ select
 from
     releases
 where
-    major_version = ${params.release}
+    release_train = ${params.release}
     and tag not like '${params.release}.%-next%'
 group by
     release_date,
@@ -194,7 +194,7 @@ with commit_dates as (
     from
         commits
     where
-        major_version = ${params.release}
+        release_train = ${params.release}
     order by
         commit_date
 ),

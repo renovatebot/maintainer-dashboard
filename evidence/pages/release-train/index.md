@@ -8,45 +8,45 @@ Statistics about each major version ("release train") of Renovate, and some insi
 -- Co-authored-by: Claude Sonnet 4.5 (GitHub Copilot)
 select
     DENSE_RANK() OVER (
-        partition by major_version
+        partition by release_train
         order by
             release_date
     ) - 1 as release_number,
-    major_version,
+    release_train,
     release_date,
     COUNT(*) as releases_on_date
 from
     releases
 where
     tag not like '.%-next%'
-    and major_version > 36
+    and release_train > 36
 group by
-    major_version,
+    release_train,
     release_date
 order by
-    major_version desc,
+    release_train desc,
     release_date
 ```
 
-<BarChart title="# of releases per day of a given major version (last 6)" data={all_releases_no_date} series="major_version" />
+<BarChart title="# of releases per day of a given major version (last 6)" data={all_releases_no_date} series="release_train" />
 
 
 ```sql major_versions
 select
-    distinct major_version,
+    release_train,
     count(*) as num_releases
 from
     release_trains.releases
 where
-    major_version is not null
+    release_train is not null
 group by
-    major_version
+    release_train
 order by
-    major_version desc;
+    release_train desc;
 ```
 
 {#each major_versions as version}
 
-- [{version.major_version}.x ({version.num_releases} releases)](/release-train/{version.major_version}/)
+- [{version.release_train}.x ({version.num_releases} releases)](/release-train/{version.release_train}/)
 
 {/each}
