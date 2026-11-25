@@ -49,6 +49,22 @@ Commits per month, split by whether they were dependency updates:
 
 <BarChart data={commits_by_month} x=month y=commits series=kind sort=false />
 
+And by who authored them:
+
+<BarChart data={commits_by_author_month} x=month y=commits series=author_type sort=false />
+
+<DataTable data={commits_by_author_type}>
+    <Column id=author_type title="Author" />
+    <Column id=commits title="Commits" />
+    <Column id=share title="Share" fmt=pct0 />
+</DataTable>
+
+The top 10 human authors:
+
+<DataTable data={top_human_authors} />
+
+Releases are cut automatically by semantic-release, so aren't attributed to an author.
+
 And the weekdays releases went out on:
 
 <BarChart data={releases_by_weekday} x=weekday y=num_releases sort=false />
@@ -252,6 +268,70 @@ group by
     weekday
 order by
     weekday_number
+```
+
+```sql commits_with_author_type
+select
+    commit_date,
+    author,
+    (
+        case
+            when author is null
+            or author = '' then 'Unknown'
+            when author in ('renovate[bot]', 'Renovate Bot') then 'renovate[bot]'
+            when author like '%[bot]' then 'Other bot'
+            else 'Human'
+        end
+    ) as author_type
+from
+    commits
+where
+    release_train = ${params.release}
+```
+
+```sql commits_by_author_month
+select
+    strftime(date_trunc('month', commit_date), '%b %Y') as month,
+    date_trunc('month', commit_date) as month_start,
+    author_type,
+    COUNT(*) as commits
+from
+    ${commits_with_author_type}
+group by
+    month,
+    month_start,
+    author_type
+order by
+    month_start
+```
+
+```sql commits_by_author_type
+select
+    author_type,
+    COUNT(*) as commits,
+    COUNT(*) * 1.0 / SUM(COUNT(*)) OVER () as share
+from
+    ${commits_with_author_type}
+group by
+    author_type
+order by
+    commits desc
+```
+
+```sql top_human_authors
+select
+    author,
+    COUNT(*) as commits
+from
+    ${commits_with_author_type}
+where
+    author_type = 'Human'
+group by
+    author
+order by
+    commits desc
+limit
+    10
 ```
 
 ```sql longest_commit_streak
