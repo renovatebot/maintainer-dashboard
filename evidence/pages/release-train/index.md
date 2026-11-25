@@ -18,7 +18,7 @@ select
 from
     releases
 where
-    tag not like '.%-next%'
+    tag not like '%-next%'
     and release_train > 36
 group by
     release_train,
@@ -91,7 +91,7 @@ Comparing each release train (excluding pre-releases):
 ```sql major_versions
 select
     release_train,
-    count(*) as num_releases
+    count(*) filter (where tag not like '%-next%') as num_releases
 from
     release_trains.releases
 where

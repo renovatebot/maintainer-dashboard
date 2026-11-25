@@ -21,7 +21,7 @@ from
     releases
 where
     release_train = ${params.release}
-    and tag not like '${params.release}.%-next%'
+    and tag not like '%-next%'
 group by
     release_date,
     is_minor
@@ -113,6 +113,7 @@ from
     releases
 where
     release_train = ${params.release}
+    and tag not like '%-next%'
 ```
 
 ```sql num_minor_releases
@@ -122,6 +123,7 @@ from
     releases
 where
     release_train = ${params.release}
+    and tag not like '%-next%'
     and is_minor = 1
 ```
 
@@ -182,7 +184,7 @@ from
     releases
 where
     release_train = ${params.release}
-    and tag not like '${params.release}.%-next%'
+    and tag not like '%-next%'
 group by
     release_date
 order by
