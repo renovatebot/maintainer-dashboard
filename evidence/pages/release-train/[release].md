@@ -41,7 +41,9 @@ In Renovate {params.release}.x, there were:
 
 And had the following release cadence:
 
-<BarChart data={all_release_dates} series="release_type" />
+<BarChart data={all_release_dates} series="release_type">
+    <ReferenceLine data={major_releases} x=date label=tag labelPosition=aboveEnd color=negative lineType=solid />
+</BarChart>
 
 Given the conventional commit type, we also had:
 
@@ -187,6 +189,21 @@ group by
     release_type
 order by
     release_date asc
+```
+
+```sql major_releases
+select
+    release_date as date,
+    tag
+from
+    releases
+where
+    release_train = ${params.release}
+    and minor_version = 0
+    and patch_version = 0
+    and tag not like '%-next%'
+order by
+    release_date
 ```
 
 ```sql longest_commit_streak
