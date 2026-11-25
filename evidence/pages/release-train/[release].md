@@ -170,6 +170,8 @@ select
     release_date as date,
     (
         case
+            when minor_version = 0
+            and patch_version = 0 then 'Major'
             when is_minor == 1 then 'Minor'
             else 'Patch'
         end
@@ -179,7 +181,7 @@ from
     releases
 where
     release_train = ${params.release}
-    and tag not like '${params.release}.%-next%'
+    and tag not like '%-next%'
 group by
     release_date,
     release_type
