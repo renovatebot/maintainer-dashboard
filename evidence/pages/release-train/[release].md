@@ -49,6 +49,10 @@ Commits per month, split by whether they were dependency updates:
 
 <BarChart data={commits_by_month} x=month y=commits series=kind sort=false />
 
+And the weekdays releases went out on:
+
+<BarChart data={releases_by_weekday} x=weekday y=num_releases sort=false />
+
 Given the conventional commit type, we also had:
 
 <DataTable data={commits_by_type} />
@@ -231,6 +235,23 @@ group by
     kind
 order by
     month_start
+```
+
+```sql releases_by_weekday
+select
+    isodow(release_date) as weekday_number,
+    dayname(release_date) as weekday,
+    COUNT(*) as num_releases
+from
+    releases
+where
+    release_train = ${params.release}
+    and tag not like '%-next%'
+group by
+    weekday_number,
+    weekday
+order by
+    weekday_number
 ```
 
 ```sql longest_commit_streak
