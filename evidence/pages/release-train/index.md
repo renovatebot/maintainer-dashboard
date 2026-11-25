@@ -79,8 +79,8 @@ Comparing each release train (excluding pre-releases):
 
 <DataTable data={train_summary}>
     <Column id=release_train title="Train" fmt=num0 />
-    <Column id=first_release title="First release" fmt=date />
-    <Column id=last_release title="Last release" fmt=date />
+    <Column id=first_release title="First release" fmt="d mmm yyyy" />
+    <Column id=last_release title="Last release" fmt="d mmm yyyy" />
     <Column id=days title="Days" />
     <Column id=releases title="Releases" />
     <Column id=releases_per_week title="Releases / week" />
