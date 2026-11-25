@@ -45,6 +45,10 @@ And had the following release cadence:
     <ReferenceLine data={major_releases} x=date label=tag labelPosition=aboveEnd color=negative lineType=solid />
 </BarChart>
 
+Commits per month, split by whether they were dependency updates:
+
+<BarChart data={commits_by_month} x=month y=commits series=kind sort=false />
+
 Given the conventional commit type, we also had:
 
 <DataTable data={commits_by_type} />
@@ -204,6 +208,29 @@ where
     and tag not like '%-next%'
 order by
     release_date
+```
+
+```sql commits_by_month
+select
+    strftime(date_trunc('month', commit_date), '%b %Y') as month,
+    date_trunc('month', commit_date) as month_start,
+    (
+        case
+            when is_dependency_update = 1 then 'Dependency update'
+            else 'Other'
+        end
+    ) as kind,
+    COUNT(*) as commits
+from
+    commits
+where
+    release_train = ${params.release}
+group by
+    month,
+    month_start,
+    kind
+order by
+    month_start
 ```
 
 ```sql longest_commit_streak
